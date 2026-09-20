@@ -7,6 +7,7 @@
     "preview": "vite preview",
     "audit": "node scripts/audit.mjs",
     "sweep": "node scripts/sweep.mjs",
+    "panel": "node scripts/panel.mjs",
     "gate": "node scripts/gate-password.mjs"
   },
   "type": "module",

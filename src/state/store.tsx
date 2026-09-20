@@ -122,7 +122,9 @@ interface Ctx {
   snapshot: AppSnapshot
 }
 
-const AppCtx = createContext<Ctx | null>(null)
+/* Контекст открыт наружу ради scripts/panel.mjs: он рендерит панель
+   в строку с подставным состоянием, без роутера и браузера. */
+export const AppCtx = createContext<Ctx | null>(null)
 
 export function useApp(): Ctx {
   const ctx = useContext(AppCtx)

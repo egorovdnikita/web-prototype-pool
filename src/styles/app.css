@@ -2182,7 +2182,7 @@ html{scrollbar-gutter:stable}
    акцентный цвет оставляем — по нему видно выбранный цвет. Радиусы
    перечисляем явно: --r-* считаются от --rk на :root, и локальный --rk
    их бы не изменил. */
-.sc,.sct,.scmask{font-family:var(--font-ds);
+.sc,.sct,.scmask,.tourcard{font-family:var(--font-ds);
   --r-3xs:2px;--r-2xs:4px;--r-1xs:6px;--r-xs:8px;--r-s:12px;
   --r-m:16px;--r-l:24px;--r-xl:32px;--r-2xl:48px;--r-f:999px}
 
@@ -2435,3 +2435,28 @@ body.scopen.scleft .mask.sheet{padding:0 0 0 var(--scpad,0px)}
 .scpack i{display:block;font-style:normal;font-size:10px;line-height:14px;opacity:.7;font-weight:500}
 .scpack .scico{display:flex;align-items:center;gap:4px;flex:0 0 auto}
 .scpack .scico svg{width:18px;height:18px}
+
+/* ===== Обучение по панели =====
+   Подсветка — не вырез, а рамка с огромной тенью: тень и есть затемнение,
+   а дырка в ней показывает настоящий элемент. Клики сквозь неё проходят,
+   чтобы можно было пробовать по ходу рассказа. */
+.tourring{position:fixed;z-index:90;border-radius:16px;pointer-events:none;
+  box-shadow:0 0 0 9999px #1a1a1aa3;transition:left .2s,top .2s,width .2s,height .2s}
+:root[data-motion="off"] .tourring{transition:none}
+/* Элемент не нашёлся (вкладка ещё не отрисовалась) — просто затемняем экран */
+.tourring.none{inset:0;border-radius:0;box-shadow:none;background:#1a1a1aa3}
+.tourcard{position:fixed;z-index:91;width:320px;padding:20px;border-radius:24px;
+  background:var(--surface);color:var(--c1);box-shadow:0 12px 48px #1a1a1a52;
+  display:flex;flex-direction:column;gap:8px}
+.tourcard b{font-size:var(--fs-b1);line-height:var(--lh-b1);font-weight:600}
+.tourcard p{font-size:var(--fs-s);line-height:var(--lh-s);color:var(--c2);font-weight:500}
+.tourf{display:flex;align-items:center;gap:8px;margin-top:8px}
+.tourn{font-size:var(--fs-c);line-height:var(--lh-c);color:var(--c3);font-weight:600;margin-right:auto}
+.tourskip,.tourback,.tournext{height:32px;padding:0 14px;border-radius:999px;
+  font-size:var(--fs-s);line-height:var(--lh-s);font-weight:600;display:grid;place-items:center}
+.tourskip{color:var(--c3);padding:0 4px}
+.tourskip:hover{color:var(--c1)}
+.tourback{background:var(--ctrl);color:var(--c1)}
+.tourback:hover{background:var(--ctrl-hover)}
+.tournext{background:var(--accent);color:#fff}
+.tournext:hover{background:var(--accent-h)}

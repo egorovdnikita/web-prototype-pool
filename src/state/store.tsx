@@ -5,6 +5,7 @@ import {
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { AXES, DEF, MODELS, PRESETS, GROUP_OF, M, allowed, groups, tagsOf, applyState, workersList, workersRows, obsOf, subsOf, coinsOf, SUM_ROUTES, AX_STYLE, FONTS, fontStack, fontsHref } from '@/legacy/prototype'
 import type { AppSnapshot, Scenario, Ui } from './types'
+import { TOUR, markTourSeen, tourSeen } from '@/tour'
 
 const HOME = 'home'
 /* База сайта: «/» при раздаче с корня, «/promminer-pool/» на GitHub Pages.
@@ -42,6 +43,8 @@ const freshUi = (): Ui => ({
   seg: {}, sort: {}, page: {}, per: {}, sel: new Set(), osel: new Set(), ochk: new Set(), phide: new Set(), nch: {}, oval: false, obs: 0, sess: '',
   scgrp: [], saved: loadSaved(), sctab: 'ax', scpin: loadPins(), schist: [], scw: 420, scside: 'right',
   ...loadPanel(),
+  /* Первый заход — показываем обучение по панели; дальше только по кнопке «?» */
+  tour: tourSeen() ? null : 0,
   q: '', wfilter: null, geo: '',
   wk: null, wtag: new Set(), wgrp: new Set(),
   ftag: new Set(), fmod: new Set(), fq: '', fapp: null, fback: false, exk: 'stat',
@@ -275,6 +278,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      /* Пока идёт обучение, стрелки листают шаги, а Esc его закрывает */
+      if (U.current.tour != null) {
+        const n = U.current.tour
+        if (e.key === 'Escape') { U.current.tour = null; markTourSeen(); return bump() }
+        if (e.key === 'ArrowRight' && n < TOUR.length - 1) {
+          U.current.tour = n + 1
+          const st = TOUR[n + 1]
+          if (st.panel !== undefined) panel.current = st.panel
+          if (st.tab) U.current.sctab = st.tab
+          return bump()
+        }
+        if (e.key === 'ArrowLeft' && n > 0) {
+          U.current.tour = n - 1
+          const st = TOUR[n - 1]
+          if (st.panel !== undefined) panel.current = st.panel
+          if (st.tab) U.current.sctab = st.tab
+          return bump()
+        }
+      }
       if (e.key === 'Escape') {
         if (modal.current) { modal.current = null; bump() }
         else if (pop.current) { pop.current = null; bump() }
@@ -679,6 +701,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (gt) { go(gt.dataset.go!); return bump() }
     /* Вотчер без разрешения на раздел не должен на нём стоять: уводим
        на первый доступный, а если Главной нет — на ближайший из разрешённых */
+    /* Шаг обучения открывает панель и нужную вкладку: подсветка ссылается
+       на настоящие элементы, и без этого ей не на что встать. */
+    function applyTourStep(n: number) {
+      const step = TOUR[n]
+      if (!step) return
+      if (step.panel !== undefined) panel.current = step.panel
+      if (step.tab) { u.sctab = step.tab; storePanel(u) }
+    }
+
     function guardRoute() {
       /* монета вне набора ссылки наблюдателя переключается на доступную (28:44088) */
       const coins = coinsOf()
@@ -814,6 +845,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     if (at('[data-mini]')) { S.current.side = S.current.side === 'mini' ? 'full' : 'mini'; return bump() }
     if (at('[data-panel]')) { panel.current = !panel.current; return bump() }
+    /* ==== Обучение ==== */
+    if (at('[data-tour]')) { u.tour = 0; applyTourStep(0); return bump() }
+    const tstep = at('[data-tourgo]')
+    if (tstep) {
+      const n = Number(tstep.dataset.tourgo)
+      if (n < 0 || n >= TOUR.length) { u.tour = null; markTourSeen(); return bump() }
+      u.tour = n; applyTourStep(n); return bump()
+    }
+    if (at('[data-tourend]')) { u.tour = null; markTourSeen(); return bump() }
     const pr = at('[data-preset]')
     if (pr) {
       const found = PRESETS.find(([n]) => n === pr.dataset.preset)

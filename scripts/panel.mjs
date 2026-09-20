@@ -18,6 +18,8 @@ import fs from 'node:fs';
 const P = new URL('../', import.meta.url).pathname;
 const vite = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'error' });
 const { ScenarioPanel } = await vite.ssrLoadModule('/src/components/ScenarioPanel.tsx');
+const { Tour } = await vite.ssrLoadModule('/src/components/Tour.tsx');
+const { TOUR } = await vite.ssrLoadModule('/src/tour.ts');
 const { AppCtx } = await vite.ssrLoadModule('/src/state/store.tsx');
 const proto = await vite.ssrLoadModule('/src/legacy/prototype.js');
 const { AXES, DEF, AX_STYLE, AX_OWN, PRESETS, TITLES, MODALS } = proto;
@@ -124,7 +126,23 @@ run('панель слева', { ...DEF }, ui({ scside: 'left' }), {}, (html) =>
 run('открыта модалка', { ...DEF }, ui(), { modal: 'export' }, (html) =>
   html.includes('scmask on') ? 'маска панели рисуется поверх модалки' : null);
 
-/* 8. Каждый data-атрибут разметки кто-то обрабатывает */
+/* 8. Обучение: каждый шаг рисуется и ведёт на следующий */
+for (let i = 0; i < TOUR.length; i++) {
+  const html = renderToStaticMarkup(
+    h(AppCtx.Provider, { value: ctx({ ...DEF }, ui({ tour: i })) }, h(Tour, null)));
+  renders++;
+  if (!html.includes(TOUR[i].title)) fail(`шаг обучения ${i + 1} не показывает заголовок`);
+  if (!html.includes(`${i + 1} из ${TOUR.length}`)) fail(`шаг обучения ${i + 1} без счётчика`);
+  const next = i === TOUR.length - 1 ? 'Готово' : 'Дальше';
+  if (!html.includes(next)) fail(`шаг обучения ${i + 1} без кнопки «${next}»`);
+  if (i > 0 && !html.includes(`data-tourgo="${i - 1}"`)) fail(`шаг обучения ${i + 1} без «Назад»`);
+  all.tour = (all.tour || '') + html;
+}
+if (renderToStaticMarkup(h(AppCtx.Provider, { value: ctx({ ...DEF }, ui({ tour: null })) }, h(Tour, null))))
+  fail('обучение рисуется, когда оно выключено');
+renders++;
+
+/* 9. Каждый data-атрибут разметки кто-то обрабатывает */
 const used = new Set();
 for (const html of [...Object.values(all)]) {
   for (const m of html.matchAll(/data-([a-z0-9-]+)(?:=|\s|>)/g)) used.add(m[1]);
@@ -139,4 +157,4 @@ for (const k of used) {
 
 await vite.close();
 console.log(`панель: ${renders} рендеров, ${prod.length} осей, ${Object.keys(TITLES).length} экранов, `
-  + `${Object.keys(MODALS).length} модалок, ${PRESETS.length} связок — ошибок нет`);
+  + `${Object.keys(MODALS).length} модалок, ${PRESETS.length} связок, ${TOUR.length} шагов обучения — ошибок нет`);

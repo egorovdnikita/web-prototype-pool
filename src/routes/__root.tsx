@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Outlet, createRootRoute } from '@tanstack/react-router'
 import { AppProvider, useApp, useModel } from '@/state/store'
 import { Gate } from '@/components/Gate'
+import { Tour } from '@/components/Tour'
 import { unlocked } from '@/gate'
 import { Sidebar } from '@/components/Sidebar'
 import { Header } from '@/components/Header'
@@ -50,6 +51,7 @@ function Layout() {
       )}
       <Modal m={m} />
       <ScenarioPanel />
+      <Tour />
       <Toasts />
     </div>
   )

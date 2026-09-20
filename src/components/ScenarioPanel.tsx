@@ -178,7 +178,7 @@ export function ScenarioPanel() {
       </button>
       {/* Затемнение под панелью: клик по нему закрывает. При открытой модалке
           не рисуем — у неё своя маска, и вторая только гасила бы окно. */}
-      <div className={`scmask ${panel && !modal ? 'on' : ''}`} data-panel aria-hidden="true" />
+      <div className={`scmask ${panel && !modal && U.tour == null ? 'on' : ''}`} data-panel aria-hidden="true" />
       <aside
         ref={box}
         className={`sc ${panel ? 'open' : ''} ${U.scside === 'left' ? 'dockl' : ''}`}
@@ -203,6 +203,7 @@ export function ScenarioPanel() {
           {changed.length > 0 && <span className="scbadge">{changed.length} из {keys.length}</span>}
           {/* В шапке подсказок по наведению нет: они раскрывались вниз
               и закрывали вкладки. Смысл кнопок несёт их состояние. */}
+          <button className="scx" data-tour aria-label="Пройти обучение по панели" title="Обучение">?</button>
           <button className="scx" data-scside aria-label="Перенести панель на другую сторону">⇄</button>
           {WIDTHS.map((w, i) => (
             <button

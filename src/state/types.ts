@@ -134,6 +134,10 @@ export interface Ui {
   scgrp?: string[]
   /** Свои сохранённые сценарии (живут в localStorage). */
   saved?: { name: string; axes: Record<string, string>; at?: number }[]
+  /** Свои темы: только оси оформления, отдельно от сценариев */
+  themes?: { name: string; sty: Record<string, string>; at?: number }[]
+  /** Оформление, отложенное на время «посмотреть без темы» */
+  stystash?: Record<string, string>
   /** Фильтр в панели сценариев. */
   scq?: string
   /** Вкладка панели: оси, наборы или переходы. */

@@ -25,13 +25,16 @@
 ## Развёртывание
 
 ```bash
-npm i -g wrangler
 cd worker
-wrangler kv namespace create RL     # id вписать в wrangler.toml
-wrangler secret put ANTHROPIC_API_KEY
-wrangler secret put PM_KEY          # любая строка, та же, что в VITE_AI_TOKEN
-wrangler deploy
+npx wrangler login
+npx wrangler kv namespace create RL     # id вписать в wrangler.toml
+npx wrangler secret put ANTHROPIC_API_KEY
+npx wrangler secret put PM_KEY          # любая строка, та же, что в VITE_AI_TOKEN
+npx wrangler deploy
 ```
+
+Через `npx`, а не `npm i -g`: глобальная установка на macOS упирается
+в права на `/usr/local/lib` и требует sudo, а wrangler нужен пару раз.
 
 Потом собрать прототип с адресом прокси:
 

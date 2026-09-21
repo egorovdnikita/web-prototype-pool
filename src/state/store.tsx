@@ -3,7 +3,7 @@ import {
   type ReactNode,
 } from 'react'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
-import { cleanTune, cssVars, parseTune, tuneStr, ALL_VARS } from '@/theme'
+import { buildTokensDoc, cleanTune, cssVars, parseTune, readTokens, tuneStr, ALL_VARS } from '@/theme'
 import { AXES, DEF, MODELS, PRESETS, GROUP_OF, M, allowed, groups, tagsOf, applyState, workersList, workersRows, obsOf, subsOf, coinsOf, SUM_ROUTES, AX_STYLE, FONTS, fontStack, fontsHref } from '@/legacy/prototype'
 import type { AppSnapshot, Scenario, Ui } from './types'
 import { TOUR, markTourSeen, tourSeen } from '@/tour'
@@ -45,7 +45,7 @@ function ensureFonts() {
 
 const freshUi = (): Ui => ({
   seg: {}, sort: {}, page: {}, per: {}, sel: new Set(), osel: new Set(), ochk: new Set(), phide: new Set(), nch: {}, oval: false, obs: 0, sess: '',
-  scgrp: [], saved: loadSaved(), sctab: 'ax', scpin: loadPins(), schist: [], scw: 420, scside: 'right',
+  scgrp: [], saved: loadSaved(), themes: loadThemes(), sctab: 'ax', scpin: loadPins(), schist: [], scw: 420, scside: 'right',
   ...loadPanel(),
   /* Первый заход — показываем обучение по панели; дальше только по кнопке «?» */
   tour: tourSeen() ? null : 0,
@@ -76,6 +76,14 @@ function loadPins(): string[] {
 }
 function storePins(list: string[]) {
   try { localStorage.setItem(PIN_KEY, JSON.stringify(list)) } catch { /* приватный режим */ }
+}
+/** Свои темы — то же хранилище, но только про оформление */
+const THEME_KEY = 'pm.themes'
+function loadThemes(): Ui['themes'] {
+  try { return JSON.parse(localStorage.getItem(THEME_KEY) || '[]') } catch { return [] }
+}
+function storeThemes(list: Ui['themes']) {
+  try { localStorage.setItem(THEME_KEY, JSON.stringify(list)) } catch { /* приватный режим */ }
 }
 function loadSaved(): Ui['saved'] {
   try { return JSON.parse(localStorage.getItem(SAVED_KEY) || '[]') } catch { return [] }
@@ -1092,6 +1100,84 @@ export function AppProvider({ children }: { children: ReactNode }) {
         modal.current = null; toast(`Сценарий «${found.name}»`)
       }
       return bump()
+    }
+    /* ==== Свои темы: оформление отдельно от сценария ==== */
+    if (at('[data-themesave]')) {
+      const inp = document.getElementById('scthname') as HTMLInputElement | null
+      const name = (inp?.value || '').trim() || `Тема ${(u.themes?.length || 0) + 1}`
+      const sty: Record<string, string> = {}
+      for (const k of AX_STYLE) {
+        const v = (S.current as unknown as Record<string, string>)[k]
+        if (v !== (DEF as unknown as Record<string, string>)[k]) sty[k] = v
+      }
+      if (!Object.keys(sty).length) return toast('Оформление дизайн-системное — сохранять нечего')
+      const same = (u.themes || []).find((x) => JSON.stringify(x.sty) === JSON.stringify(sty))
+      if (same && same.name !== name) {
+        if (inp) inp.value = ''
+        return toast(`Такая тема уже есть — «${same.name}»`)
+      }
+      u.themes = [...(u.themes || []).filter((x) => x.name !== name), { name, sty, at: Date.now() }]
+      storeThemes(u.themes)
+      if (inp) inp.value = ''
+      toast(`Тема «${name}» сохранена`)
+      return bump()
+    }
+    const thgo = at('[data-themego]')
+    if (thgo) {
+      const found = (u.themes || []).find((x) => x.name === thgo.dataset.themego)
+      if (found) {
+        pushHist()
+        /* Тема меняет только оформление: состояние продукта под ней
+           остаётся тем же — на то она и «поверх прототипа» */
+        for (const k of AX_STYLE) {
+          (S.current as unknown as Record<string, string>)[k] =
+            found.sty[k] ?? (DEF as unknown as Record<string, string>)[k]
+        }
+        u.stystash = undefined
+        toast(`Тема «${found.name}»`)
+      }
+      return bump()
+    }
+    const thdel = at('[data-themedel]')
+    if (thdel) {
+      u.themes = (u.themes || []).filter((x) => x.name !== thdel.dataset.themedel)
+      storeThemes(u.themes)
+      return bump()
+    }
+    const thlink = at('[data-themelink]')
+    if (thlink) {
+      const found = (u.themes || []).find((x) => x.name === thlink.dataset.themelink)
+      if (!found) return
+      /* Ссылка только с оформлением: у коллеги останется его сценарий,
+         а вид станет ваш — это и есть «покажи, как я перекрасил» */
+      const q = new URLSearchParams(found.sty)
+      copy(location.origin + location.pathname + '#' + q, `Ссылка на тему «${found.name}»`)
+      return
+    }
+    /* Сравнение до и после: оформление откладывается целиком и возвращается
+       той же кнопкой. Не отдельный режим рендера, а обычная правка осей —
+       поэтому «до» честное, вместе с иконками, и работает отмена. */
+    if (at('[data-styoff]')) {
+      pushHist()
+      const cur = S.current as unknown as Record<string, string>
+      const def = DEF as unknown as Record<string, string>
+      if (u.stystash) {
+        for (const k of AX_STYLE) cur[k] = u.stystash[k] ?? def[k]
+        u.stystash = undefined
+      } else {
+        const stash: Record<string, string> = {}
+        for (const k of AX_STYLE) { stash[k] = cur[k]; cur[k] = def[k] }
+        u.stystash = stash
+      }
+      return bump()
+    }
+    /* Выгрузка токенов: значения берём посчитанными, как их видит браузер */
+    if (at('[data-tokens]')) {
+      const dark = document.documentElement.getAttribute('data-theme') === 'dark'
+      const doc = buildTokensDoc(readTokens(), { dark, font: S.current.font })
+      copy(JSON.stringify(doc, null, 2),
+        `Токены ${dark ? 'тёмной' : 'светлой'} темы скопированы — вставьте в плагин импорта Figma`)
+      return
     }
     const dls = at('[data-delsave]')
     if (dls) {

@@ -227,3 +227,96 @@ export function tuneList(t: Tune): { k: string; label: string; value: string }[]
     }
   })
 }
+
+/* ===== Выгрузка токенов =====
+
+   Дизайнеру нужна не строка из ссылки, а значения: «какой у нас теперь
+   фон карточки и радиус кнопки». Считать их в уме по множителям нельзя —
+   и не нужно: браузер уже посчитал. Мы спрашиваем у него итоговые
+   величины (`readTokens`) и складываем их в формат Design Tokens (W3C),
+   который понимают плагины импорта переменных в Figma. */
+
+/** Что выгружаем. Ключ — имя в файле, значение — переменная CSS. */
+export const EXPORT: Record<string, [string, string][]> = {
+  color: [
+    ['accent', '--accent'], ['accent-sub', '--accent-sub'], ['accent-hover', '--accent-h'],
+    ['accent-active', '--accent-a'], ['focus', '--focus'], ['brand', '--brand'],
+    ['bg', '--bg'], ['surface', '--surface'], ['bg-3', '--bg3'],
+    ['text-1', '--c1'], ['text-2', '--c2'], ['text-3', '--c3'],
+    ['border', '--border'], ['control', '--ctrl'], ['control-line', '--ctrl-line'],
+    ['positive', '--pos'], ['warning', '--warn'], ['negative', '--neg'], ['neutral', '--neu'],
+    ['inverse-bg', '--inv-bg'], ['inverse-fg', '--inv-fg'],
+  ],
+  radius: [
+    ['3xs', '--r-3xs'], ['2xs', '--r-2xs'], ['1xs', '--r-1xs'], ['xs', '--r-xs'],
+    ['s', '--r-s'], ['m', '--r-m'], ['l', '--r-l'], ['xl', '--r-xl'], ['2xl', '--r-2xl'],
+  ],
+  space: [
+    ['1', '--sp1'], ['2', '--sp2'], ['3', '--sp3'],
+    ['4', '--sp4'], ['5', '--sp5'], ['6', '--sp6'],
+  ],
+  size: [
+    ['button', '--h-btn'], ['button-sm', '--h-btn-sm'], ['field', '--h-field'],
+    ['control', '--h-ctrl'], ['sidebar', '--sb'],
+  ],
+  font: [
+    ['body-1', '--fs-b1'], ['body-2', '--fs-m'], ['body-3', '--fs-s'],
+    ['caption-1', '--fs-c'], ['caption-2', '--fs-c2'],
+    ['headline-5', '--fs-h5'], ['headline-4', '--fs-h4'], ['headline-3', '--fs-h3'],
+    ['headline-2', '--fs-h2'], ['headline-1', '--fs-h1'], ['display', '--fs-ds'],
+  ],
+}
+/** Цвет или размер: от этого зависит и способ замера, и тип в файле */
+const isColorGroup = (g: string) => g === 'color'
+
+/** Итоговые значения из браузера. Считает он, а не мы: `--r-m` в CSS —
+    это `calc(16px*var(--rk))`, и разворачивать эту арифметику руками
+    значило бы завести вторую копию дизайн-системы. */
+export function readTokens(): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (typeof document === 'undefined') return out
+  const probe = document.createElement('div')
+  probe.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden'
+  document.body.appendChild(probe)
+  for (const [group, list] of Object.entries(EXPORT)) {
+    for (const [name, v] of list) {
+      /* Цвет меряем через color, длину — через width: computed-значение
+         самой переменной осталось бы текстом вида calc(16px*1) */
+      probe.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;'
+        + (isColorGroup(group) ? `color:var(${v})` : `width:var(${v})`)
+      const cs = getComputedStyle(probe)
+      out[`${group}.${name}`] = isColorGroup(group) ? rgbaHex(cs.color) : cs.width
+    }
+  }
+  probe.remove()
+  out['font.family'] = getComputedStyle(document.documentElement).getPropertyValue('--font').trim()
+  return out
+}
+
+/** rgb()/rgba() из браузера → #rrggbb или #rrggbbaa: в Figma нужен hex */
+export function rgbaHex(v: string) {
+  const m = v.match(/-?[\d.]+/g)
+  if (!m || m.length < 3) return v
+  const h = m.slice(0, 3).map((n) => Math.round(+n).toString(16).padStart(2, '0')).join('')
+  const a = m[3] === undefined || +m[3] >= 1 ? '' : Math.round(+m[3] * 255).toString(16).padStart(2, '0')
+  return '#' + h + a
+}
+
+/** Файл токенов в формате Design Tokens: его жуют плагины импорта в Figma */
+export function buildTokensDoc(values: Record<string, string>, meta: { dark: boolean; font: string }) {
+  const doc: Record<string, unknown> = {
+    $description: `Promminer Pool — тема прототипа, ${meta.dark ? 'тёмная' : 'светлая'}`,
+  }
+  for (const [group, list] of Object.entries(EXPORT)) {
+    const g: Record<string, unknown> = {}
+    for (const [name] of list) {
+      const v = values[`${group}.${name}`]
+      if (!v) continue
+      g[name] = { $type: isColorGroup(group) ? 'color' : group === 'font' ? 'fontSize' : 'dimension', $value: v }
+    }
+    if (Object.keys(g).length) doc[group] = g
+  }
+  const fam = values['font.family'] || meta.font
+  if (fam) (doc.font as Record<string, unknown>).family = { $type: 'fontFamily', $value: fam }
+  return doc
+}

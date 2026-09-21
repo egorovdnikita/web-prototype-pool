@@ -274,6 +274,44 @@ run('открыта модалка', { ...DEF }, ui(), { modal: 'export' }, (htm
     (html) => html.includes('Думаю') ? null : 'нет строки ожидания');
 }
 
+/* 8e. Мои темы, сравнение до/после и выгрузка токенов */
+{
+  const theme = await vite.ssrLoadModule('/src/theme.ts');
+  /* Файл токенов: типы по группам, значения — как их посчитал браузер */
+  const values = {
+    'color.bg': '#f5f5f5', 'color.accent': '#7086fc', 'radius.m': '16px',
+    'space.4': '16px', 'size.button': '48px', 'font.body-2': '16px', 'font.family': 'Gilroy',
+  };
+  const doc = theme.buildTokensDoc(values, { dark: false, font: 'gilroy' });
+  if (doc.color.bg.$value !== '#f5f5f5' || doc.color.bg.$type !== 'color') fail('цвет в выгрузке не тот');
+  if (doc.radius.m.$type !== 'dimension') fail('радиус в выгрузке не размер');
+  if (doc.font['body-2'].$type !== 'fontSize') fail('кегль в выгрузке не кегль');
+  if (doc.font.family.$value !== 'Gilroy') fail('гарнитура в выгрузку не попала');
+  if (!String(doc.$description).includes('светлая')) fail('в выгрузке не указана тема');
+  if (JSON.parse(JSON.stringify(doc)) === null) fail('выгрузка не сериализуется');
+  /* Пустые значения пропускаем, а не пишем null: плагины Figma на них спотыкаются */
+  if ('l' in theme.buildTokensDoc({}, { dark: true, font: '' })) fail('в выгрузку попало пустое значение');
+  if (theme.rgbaHex('rgb(10, 20, 30)') !== '#0a141e') fail('цвет из браузера разобран неверно');
+  if (theme.rgbaHex('rgba(0, 0, 0, 0.5)') !== '#00000080') fail('прозрачность потерялась');
+  /* Каждая переменная выгрузки существует в app.css — иначе в файле дырки */
+  const css = fs.readFileSync(P + 'src/styles/app.css', 'utf8');
+  for (const list of Object.values(theme.EXPORT)) for (const [, v] of list) {
+    if (!css.includes(v + ':')) fail(`переменной ${v} нет в app.css, а она в выгрузке`);
+  }
+
+  const withThemes = run('«Стиль» со своими темами', { ...DEF, font: 'inter' },
+    ui({ sctab: 'sty', themes: [{ name: 'Тёплая', sty: { font: 'inter', tune: 't1_bg-f6eadf' }, at: Date.now() }] }), {},
+    (html) => html.includes('data-themego="Тёплая"') ? null : 'тема не попала в список');
+  if (!withThemes.includes('data-themelink="Тёплая"')) fail('у темы нет ссылки');
+  if (!withThemes.includes('data-themedel="Тёплая"')) fail('тему нельзя удалить');
+  if (!withThemes.includes('1 из 5') || !withThemes.includes('токенов 1')) fail('подпись темы врёт');
+  if (!withThemes.includes('Посмотреть без темы')) fail('нет сравнения до/после');
+  const peek = run('«Стиль» во время сравнения', { ...DEF },
+    ui({ sctab: 'sty', stystash: { font: 'inter' } }), {},
+    (html) => html.includes('Вернуть тему') ? null : 'кнопка не переключилась');
+  if (!peek.includes('без темы')) fail('не сказано, что тема снята');
+}
+
 /* 9. Обучение: каждый шаг рисуется и ведёт на следующий */
 for (let i = 0; i < TOUR.length; i++) {
   const html = renderToStaticMarkup(

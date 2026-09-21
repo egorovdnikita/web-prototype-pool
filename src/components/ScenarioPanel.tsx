@@ -15,6 +15,12 @@ const TABS: [NonNullable<Ui['sctab']>, string][] = [
 const STY = (k: string) => AX_STYLE.has(k)
 /* В счётчике «из N» tune не участвует: это не переключатель, а патч токенов */
 const STY_N = AX_STYLE.size - 1
+/* Короткая подпись под именем темы: что в ней вообще лежит */
+const styNote = (sty: Record<string, string>) => {
+  const n = Object.keys(sty).filter((k) => k !== 'tune').length
+  const tok = Object.keys(parseTune(sty.tune || '')).length
+  return [n ? `${n} из ${STY_N}` : '', tok ? `токенов ${tok}` : ''].filter(Boolean).join(' · ') || 'без правок'
+}
 /* Ширины панели кнопками. Первая — значение по умолчанию из freshUi: иначе
    ни одна кнопка не подсвечена, пока её не нажали. Между ними ширина тянется
    за край мышью, поэтому кнопка может быть не подсвечена ни одна. */
@@ -114,7 +120,11 @@ export function ScenarioPanel() {
   const tuneRows = tuneList(tune)
   const tuneShown = hitAxis('tune') || tuneRows.some((r) => hit(r.label) || hit(r.value))
   const tuneWarn = tuneWarnings(tune, S.theme === 'dark')
-  const styEmpty = !fonts.length && !accents.length && !packs.length && !styRows.length && !tuneShown
+  /* Свои темы: сохранённое оформление целиком */
+  const themes = (U.themes || []).filter((th) => hit(th.name) || hit('тема') || hit('оформление'))
+  const themesShown = !q || themes.length > 0 || hit('тема') || hit('токен')
+  const styEmpty = !fonts.length && !accents.length && !packs.length && !styRows.length
+    && !tuneShown && !themesShown
 
   const axisRow = (k: Key) => (
     <div className={`scg ${S[k] !== DEF[k] ? 'dirty' : ''}`} key={k}>
@@ -447,6 +457,51 @@ export function ScenarioPanel() {
                     <button className="scchip" data-chatsay={c} key={c}>{c}</button>
                   ))}
                 </div>
+              )}
+            </section>
+            )}
+
+            {themesShown && (
+            <section className="scsec">
+              <div className="scshead"><div className="scsect plain">Мои темы
+                {themes.length > 0 && <span className="scqty">{themes.length}</span>}</div></div>
+              <p className="scdesc">
+                Тема — это только оформление: шрифт, акцент, скругления, отступы, иконки
+                и тонкая настройка. Сценарий под ней остаётся тот же, поэтому одну и ту же
+                тему можно примерить к любому состоянию прототипа. Живёт в этом браузере,
+                а ссылка на неё — обычная ссылка со сценарием, но с одним оформлением.
+              </p>
+              <div className="scsave">
+                <input id="scthname" placeholder="Название темы" />
+                <button data-themesave disabled={!changedSty.length}>Сохранить</button>
+              </div>
+              {themes.length > 0 ? (
+                <div className="scp">
+                  {themes.map((th) => (
+                    <div className="scrow" key={th.name}>
+                      <button data-themego={th.name}>
+                        <b>{th.name}</b>
+                        <i>{styNote(th.sty)}{th.at ? ` · ${new Date(th.at).toLocaleDateString('ru')}` : ''}</i>
+                      </button>
+                      <button className="scadd" data-themelink={th.name} title="Скопировать ссылку на тему">↗</button>
+                      <button className="scdel" data-themedel={th.name} aria-label="Удалить">×</button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="scnote">Настройте вид и сохраните — тема останется в этом браузере.</p>
+              )}
+              <div className="scbar">
+                <button className={`scchip ${U.stystash ? 'on' : ''}`} data-styoff
+                  disabled={!changedSty.length && !U.stystash}>
+                  {U.stystash ? 'Вернуть тему' : 'Посмотреть без темы'}
+                </button>
+                <button className="scchip" data-tokens title="JSON в формате Design Tokens">
+                  Выгрузить токены
+                </button>
+              </div>
+              {U.stystash && (
+                <p className="scnote">Сейчас видно дизайн-систему без темы. Кнопка вернёт её обратно.</p>
               )}
             </section>
             )}

@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import {
   I, notifCount, PROF, SUM_ROUTES, TITLES, acctSummary, nf, notifications, permsOf, profTabs, type Model,
 } from '@/legacy/prototype'
-import { useApp } from '@/state/store'
+import { DRAFT_ROUTE, useApp } from '@/state/store'
 import { Ico, Raw } from './Raw'
 
 /* Хедер по DS: белая панель, снизу radius-l 24, padding 20/8, ряд px16 gap16.
@@ -11,7 +11,7 @@ import { Ico, Raw } from './Raw'
 const PROFILE_ROUTES = [...PROF.map(([id]) => id), 'notifconfig']
 
 export function Header({ m }: { m: Model }) {
-  const { S, route, pop } = useApp()
+  const { S, route, pop, draft } = useApp()
   const n = notifCount()
   const acct = S.acct === 'main' ? 'natarusso' : 'alfred'
   /* Наблюдателю баланс показываем, только если открыт раздел «Мои активы»,
@@ -21,13 +21,14 @@ export function Header({ m }: { m: Model }) {
   const showBal = !obs || !!permsOf().assets
   /* На проде заголовок вкладки — «<Раздел> - Promminer» */
   useEffect(() => {
-    document.title = TITLES[route] ? `${TITLES[route]} - Promminer` : 'Promminer Pool'
-  }, [route])
+    const t = TITLES[route] || (route === DRAFT_ROUTE ? draft?.title : '')
+    document.title = t ? `${t} - Promminer` : 'Promminer Pool'
+  }, [route, draft])
 
   return (
     <header className="top">
       <div className="toprow">
-        <h1 className="h3">{TITLES[route] || ''}</h1>
+        <h1 className="h3">{TITLES[route] || (route === DRAFT_ROUTE ? draft?.title || 'Черновик' : '')}</h1>
         <div className="hgroup">
           {showBal && (
             <button className="hbtn" data-go="assets">

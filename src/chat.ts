@@ -10,6 +10,7 @@ import {
   TOKENS, BASE, parseTune, tuneStr, tuneWarnings, valueOf, readable, contrast,
   darken, lighten, warmer, cooler,
 } from './theme'
+import { skeletonDraft, vetDraft, CAPS, type Draft, type Block } from './draft'
 
 export interface ChatMsg { role: 'you' | 'bot'; text: string }
 
@@ -24,6 +25,8 @@ export interface ChatAnswer {
   modal?: string
   /** Подсказки под ответом: их можно нажать как готовый запрос */
   chips?: string[]
+  /** Черновой раздел: чат собрал новый экран из блоков дизайн-системы */
+  draft?: Draft
 }
 
 /* Слова запроса: регистр и ё не важны, знаки препинания выкидываем */
@@ -104,7 +107,8 @@ const HELP = 'Я включаю состояния прототипа слова
   + '«наблюдатель», «шрифт Onest». Оформление тоже меняю: «фон темнее», '
   + '«карточки белые», «скругления 4», «отступы больше», «крупнее текст», '
   + '«сайдбар 300». Скажите «сбрось», чтобы вернуть оси к умолчанию, '
-  + 'или «верни оформление» — чтобы снять только тему.'
+  + 'или «верни оформление» — чтобы снять только тему. '
+  + 'А если раздела ещё нет — «новый раздел Бонусы»: соберу черновик из блоков.'
 
 /* ===== Оформление: фразы про вид, а не про состояние продукта =====
 
@@ -178,6 +182,87 @@ function colorOf(w: string): string | null {
   const base = COLOR_STEM[cstem(name)]
   if (!base) return null
   return k === 0 ? base : k < 0 ? darken(base, 0.35) : lighten(base, 0.45)
+}
+
+/* ===== Новый раздел =====
+
+   «Сделай раздел про рефералов» — это не ось и не тема, а то, чего
+   в прототипе нет вовсе. Без модели придумать содержимое неоткуда,
+   поэтому локально собираем каркас из блоков дизайн-системы, а наполнить
+   его может модель за прокси — она возвращает ту же спецификацию. */
+
+const MAKE = /^(новый|новая|новое|создай|сделай|добавь|сгенерир|набросай|придумай)/
+/* «Вкладки» здесь нет намеренно: это блок внутри черновика, а не раздел —
+   иначе «добавь вкладки» собирало бы новый раздел с названием «и». */
+const WHAT = /^(раздел|экран|страниц)/
+/* Блоки, которые можно добросить в открытый черновик словом */
+const ADD: [RegExp, Block][] = [
+  [/^(таблиц|список)/, { t: 'table', cols: ['Дата', 'Событие', 'Значение'], rows: [] }],
+  [/^(график|диаграмм|чарт)/, { t: 'chart', title: 'Динамика' }],
+  [/^(статистик|показател|цифр|метрик)/, { t: 'stats', items: [
+    { label: 'Всего', value: '—' }, { label: 'За 24 ч', value: '—' },
+    { label: 'В среднем', value: '—' }, { label: 'Изменение', value: '—' }] }],
+  [/^(пуст|заглушк)/, { t: 'empty', title: 'Пока пусто', text: 'Данные появятся, когда что-то произойдёт' }],
+  [/^(кнопк|действи)/, { t: 'actions', items: ['Основное действие', 'Второе'] }],
+  [/^(вкладк|переключател|сегмент)/, { t: 'tabs', items: ['Все', 'Активные', 'Завершённые'] }],
+]
+
+/** Разбор запросов про новый раздел и правку открытого черновика.
+    null — речь не о нём. */
+export function draftAnswer(q: string[], all: string[], raw: string, cur: Draft | null): ChatAnswer | null {
+  /* Слова намерения ищем в исходном наборе, а не в очищенном: «сделай»
+     и «покажи» лежат в STOP, иначе они перетягивали бы поиск по осям —
+     но именно они отличают «сделай раздел» от «открой раздел». */
+  /* Правку открытого черновика разбираем первой: «добавь таблицу» — это
+     про него, а не заявка на новый раздел с названием «таблицу». */
+  const add = all.some((w) => /^(добав|встав|прибав)/.test(w))
+  const del = all.some((w) => /^(убер|удал|выкин|сотри)/.test(w))
+  const block = (add || del) ? ADD.find(([re]) => q.some((w) => re.test(w))) : undefined
+  if (cur && block) return editDraft(cur, block[1], del)
+
+  const wants = all.some((w) => MAKE.test(w)) && all.some((w) => WHAT.test(w))
+  if (wants) {
+    /* Название берём из исходной строки: регистр и кавычки важны, а words()
+       их уже потерял. «Сделай раздел про рефералов» → «Рефералы по дням»
+       мы не придумываем — берём то, что сказали. */
+    const m = raw.match(/(?:раздел|экран|страниц\w*)\w*\s*(?:про|для|о|об|по)?\s*[«"']?([^»"'.!?]+)/i)
+    const name = (m?.[1] || '').trim().replace(/\s+/g, ' ').slice(0, CAPS.title)
+    if (name.length < 2) {
+      return { say: 'Как назвать раздел? Скажите, например: «новый раздел Бонусы».', chips: ['новый раздел Бонусы'] }
+    }
+    const title = name[0].toUpperCase() + name.slice(1)
+    return {
+      say: `Собрал черновик «${title}» из блоков дизайн-системы: показатели, график и таблица. `
+        + 'Это не раздел продукта — он не сверялся с макетами и живёт в вашей ссылке. '
+        + 'Дальше скажите, что добавить или убрать.',
+      draft: skeletonDraft(title),
+      chips: ['добавь вкладки', 'добавь пустое состояние', 'убери график'],
+    }
+  }
+  return null
+}
+
+/** Добавить или убрать блок в открытом черновике */
+function editDraft(cur: Draft, block: Block, del: boolean): ChatAnswer {
+  const name = BLOCK_NAME[block.t]
+  if (del) {
+    const blocks = cur.blocks.filter((b) => b.t !== block.t)
+    if (blocks.length === cur.blocks.length) return { say: `В черновике и нет блока «${name}».` }
+    if (!blocks.length) return { say: 'Это последний блок — без него от раздела ничего не останется.' }
+    return { say: `Убрал «${name}».`, draft: vetDraft({ ...cur, blocks })!, chips: ['добавь таблицу', 'добавь график'] }
+  }
+  if (cur.blocks.length >= CAPS.blocks) {
+    return { say: `В черновике уже ${CAPS.blocks} блоков — больше не влезет в ссылку. Уберите что-нибудь.` }
+  }
+  const next = vetDraft({ ...cur, blocks: [...cur.blocks, block] })
+  return next
+    ? { say: `Добавил «${name}» в конец.`, draft: next, chips: ['добавь вкладки', 'убери таблицу'] }
+    : { say: 'Этот блок в черновик уже не влезает — ссылка станет слишком длинной.' }
+}
+
+const BLOCK_NAME: Record<Block['t'], string> = {
+  stats: 'Показатели', table: 'Таблица', chart: 'График',
+  empty: 'Пустое состояние', tabs: 'Вкладки', actions: 'Кнопки', text: 'Текст',
 }
 
 /** Просили ли вообще про внешний вид. Нужно не только разбору, но и
@@ -291,7 +376,8 @@ export function styleAnswer(q: string[], cur: Scenario, dark: boolean): ChatAnsw
   }
 }
 
-export function answer(text: string, cur: Scenario = DEF as Scenario, dark = false): ChatAnswer {
+export function answer(text: string, cur: Scenario = DEF as Scenario, dark = false,
+  draft: Draft | null = null): ChatAnswer {
   const raw = words(text)
   /* «Открой выплаты» — это экран, а не ось «Статусы выплат»: слово-намерение
      само по себе ничего не значит, но подсказывает, что искать. */
@@ -310,6 +396,10 @@ export function answer(text: string, cur: Scenario = DEF as Scenario, dark = fal
      оси, зато есть цель и действие — иначе она ушла бы в поиск наугад */
   const sty = styleAnswer(q, cur, dark)
   if (sty) return sty
+  /* Новый раздел разбираем здесь же: «сделай раздел Бонусы» не значение
+     оси и не тема — такого экрана в прототипе нет вовсе */
+  const drf = draftAnswer(q, raw, text, draft)
+  if (drf) return drf
 
   /* Вровень — выигрывает более короткое имя, а потом ось, связка, экран,
      окно: так ответ на одно и то же слово всегда один и тот же. */

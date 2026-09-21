@@ -14,6 +14,7 @@
 import { AXES, DEF, TITLES, MODALS } from '@/legacy/prototype'
 import { okEntry, parseTune, tuneStr } from '@/theme'
 import { asksStyle, words } from '@/chat'
+import { vetDraft, type Draft } from '@/draft'
 import type { ChatAnswer } from '@/chat'
 import type { Scenario } from '@/state/types'
 
@@ -28,7 +29,7 @@ export function aiUrl(): string {
 const aiToken = () => (import.meta.env?.VITE_AI_TOKEN as string) || ''
 
 /** Ответ прокси до проверки: ровно то, что пришло по сети */
-interface Raw { say?: unknown; tune?: unknown; axes?: unknown; go?: unknown; modal?: unknown; chips?: unknown }
+interface Raw { say?: unknown; tune?: unknown; axes?: unknown; go?: unknown; modal?: unknown; chips?: unknown; draft?: unknown }
 
 /* Управляющие символы вырезаем: реплика уходит в разметку текстом,
    и мусор в ней читался бы как порча вёрстки */
@@ -83,7 +84,17 @@ export function vetAnswer(raw: Raw, cur: Scenario, styleAsked: boolean) {
   const chips = Array.isArray(raw.chips)
     ? raw.chips.map((c) => str(c, 40)).filter(Boolean).slice(0, 4) : []
 
+  /* Черновой раздел: спецификация из блоков, а не разметка. Проверка
+     та же, что у локальной заготовки — лишние блоки и длинные строки
+     режутся, неизвестные типы выбрасываются. */
+  let draft: Draft | null = null
+  if (raw.draft) {
+    draft = vetDraft(raw.draft)
+    if (!draft) dropped.push('черновик раздела')
+  }
+
   const out: ChatAnswer = { say, chips }
+  if (draft) out.draft = draft
   if (Object.keys(apply).length) out.apply = apply
   if (go && go in TITLES) out.go = go
   else if (go) dropped.push(`экран ${go}`)
@@ -103,7 +114,8 @@ export function dropNote(dropped: string[], styleAsked: boolean) {
 
 /** Запрос к прокси. null — прокси не настроен, не ответил или ответил
     не тем: наверху это значит «разбираем сами, как раньше». */
-export async function ask(text: string, cur: Scenario, dark: boolean): Promise<ChatAnswer | null> {
+export async function ask(text: string, cur: Scenario, dark: boolean,
+  draft: Draft | null = null): Promise<ChatAnswer | null> {
   const url = aiUrl()
   if (!url) return null
   const styleAsked = asksStyle(words(text))
@@ -116,12 +128,14 @@ export async function ask(text: string, cur: Scenario, dark: boolean): Promise<C
       signal: ac.signal,
       /* Отправляем запрос пользователя и текущее состояние — больше
          ничего: ни ссылок, ни localStorage, ни адреса страницы */
-      body: JSON.stringify({ text, scenario: cur, dark, styleAsked }),
+      /* Открытый черновик отдаём, чтобы модель могла его править,
+         а не собирать каждый раз заново */
+      body: JSON.stringify({ text, scenario: cur, dark, styleAsked, draft }),
     })
     if (!r.ok) return null
     const raw = (await r.json()) as Raw
     const { answer: a, dropped } = vetAnswer(raw, cur, styleAsked)
-    if (!a.say && !a.apply && !a.go && !a.modal) return null
+    if (!a.say && !a.apply && !a.go && !a.modal && !a.draft) return null
     return { ...a, say: (a.say || 'Готово.') + dropNote(dropped, styleAsked) }
   } catch {
     return null

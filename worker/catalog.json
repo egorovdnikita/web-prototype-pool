@@ -1232,5 +1232,28 @@
   "c1": "fafafa",
   "c2": "a3a3a3",
   "c3": "737373"
+ },
+ "draftBlocks": {
+  "stats": "items: [{label, value, note?}] — плашки с показателями",
+  "table": "cols: [заголовок], rows: [[ячейка]] — таблица дизайн-системы",
+  "chart": "title? — график хэшрейта из прототипа",
+  "empty": "title, text? — пустое состояние с иллюстрацией",
+  "tabs": "items: [название] — Segment Control",
+  "actions": "items: [подпись] — кнопки (ничего не делают)",
+  "text": "title?, text — абзац текста"
+ },
+ "draftCaps": {
+  "title": 48,
+  "blocks": 6,
+  "text": 160,
+  "label": 32,
+  "value": 24,
+  "stats": 4,
+  "cols": 5,
+  "rows": 6,
+  "cell": 24,
+  "tabs": 4,
+  "actions": 3,
+  "link": 1800
  }
 }

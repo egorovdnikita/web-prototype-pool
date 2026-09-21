@@ -3,6 +3,7 @@ import { CHAT_HINTS } from '@/chat'
 import { AXES, AX_OWN, AX_STYLE, AXCAT, PRESETS, DEF, SCREEN_NAMES, TITLES, MODALS, ICON_PACKS, iconSample, FONTS } from '@/legacy/prototype'
 import { useApp } from '@/state/store'
 import { parseTune, tuneList, tuneWarnings } from '@/theme'
+import type { Block } from '@/draft'
 import { aiUrl } from '@/ai'
 import type { Scenario, Ui } from '@/state/types'
 
@@ -15,6 +16,17 @@ const TABS: [NonNullable<Ui['sctab']>, string][] = [
 const STY = (k: string) => AX_STYLE.has(k)
 /* В счётчике «из N» tune не участвует: это не переключатель, а патч токенов */
 const STY_N = AX_STYLE.size - 1
+/* Названия блоков черновика — для подписи в списке */
+const BLOCK_RU: Record<Block['t'], string> = {
+  stats: 'показатели', table: 'таблица', chart: 'график',
+  empty: 'пустое состояние', tabs: 'вкладки', actions: 'кнопки', text: 'текст',
+}
+const blockWord = (n: number) => {
+  const t = n % 10, h = n % 100
+  if (t === 1 && h !== 11) return 'блок'
+  if (t >= 2 && t <= 4 && (h < 12 || h > 14)) return 'блока'
+  return 'блоков'
+}
 /* Короткая подпись под именем темы: что в ней вообще лежит */
 const styNote = (sty: Record<string, string>) => {
   const n = Object.keys(sty).filter((k) => k !== 'tune').length
@@ -44,7 +56,7 @@ const modalList = () => Object.keys(MODALS)
 
 /** Панель сценариев: состояние прототипа в ссылке. Клавиша S открывает и закрывает. */
 export function ScenarioPanel() {
-  const { S, U, route, panel, modal, patchUi } = useApp()
+  const { S, U, route, panel, modal, patchUi, draft, drafts: allDrafts } = useApp()
   /* Ширина тянется за край: запоминаем, откуда начали, и считаем от этого —
      иначе на быстром движении курсор убегает от края панели. */
   const drag = useRef<{ x: number; w: number } | null>(null)
@@ -120,6 +132,10 @@ export function ScenarioPanel() {
   const tuneRows = tuneList(tune)
   const tuneShown = hitAxis('tune') || tuneRows.some((r) => hit(r.label) || hit(r.value))
   const tuneWarn = tuneWarnings(tune, S.theme === 'dark')
+  /* Черновые разделы: собраны в чате, в прототипе их нет */
+  const drafts = (allDrafts || []).filter((d) => hit(d.title)
+    || d.blocks.some((b) => hit(BLOCK_RU[b.t])))
+  const draftsShown = !q || drafts.length > 0 || hit('черновик') || hit('раздел')
   /* Свои темы: сохранённое оформление целиком */
   const themes = (U.themes || []).filter((th) => hit(th.name) || hit('тема') || hit('оформление'))
   const themesShown = !q || themes.length > 0 || hit('тема') || hit('токен')
@@ -606,6 +622,38 @@ export function ScenarioPanel() {
                 ))}
               </div>
             </section>
+            {draftsShown && (
+            <section className="scsec">
+              <div className="scshead"><div className="scsect plain">Черновики
+                {drafts.length > 0 && <span className="scqty">{drafts.length}</span>}</div></div>
+              <p className="scdesc">
+                Разделы, собранные в чате из блоков дизайн-системы. Это не продукт: с макетами
+                они не сверялись и в прототипе их нет — черновик живёт в вашей ссылке и в этом
+                браузере. Открытый виден в сайдбаре с пометкой.
+              </p>
+              {drafts.length > 0 ? (
+                <div className="scp">
+                  {drafts.map((d) => (
+                    <div className="scrow" key={d.title}>
+                      <button data-draftgo={d.title} className={draft?.title === d.title ? 'on' : ''}>
+                        <b>{d.title}</b>
+                        <i>{d.blocks.length} {blockWord(d.blocks.length)}: {d.blocks.map((b) => BLOCK_RU[b.t]).join(', ')}</i>
+                      </button>
+                      <button className="scdel" data-draftdel={d.title} aria-label="Удалить">×</button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="scnote">Пока ни одного. Скажите в чате «новый раздел Бонусы».</p>
+              )}
+              <div className="scbar">
+                {drafts.length === 0
+                  ? <button className="scchip" data-chatsay="новый раздел Бонусы">новый раздел Бонусы</button>
+                  : <button className="scchip" data-chatsay="добавь вкладки">добавь вкладки</button>}
+                {draft && <button className="scchip" data-draftclose>Убрать из сайдбара и ссылки</button>}
+              </div>
+            </section>
+            )}
             <section className="scsec">
               <div className="scshead"><div className="scsect plain">Модальные окна<span className="scqty">{modals.length}</span></div></div>
               <p className="scdesc">Открываются поверх текущего экрана — удобно смотреть окно в нужном сценарии.</p>

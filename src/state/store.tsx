@@ -10,6 +10,7 @@ import { TOUR, markTourSeen, tourSeen } from '@/tour'
 import { answer } from '@/chat'
 import type { ChatAnswer } from '@/chat'
 import { ask, aiUrl } from '@/ai'
+import { decodeDraft, encodeDraft, vetDraft, type Draft } from '@/draft'
 
 const HOME = 'home'
 /* База сайта: «/» при раздаче с корня, «/promminer-pool/» на GitHub Pages.
@@ -77,6 +78,32 @@ function loadPins(): string[] {
 function storePins(list: string[]) {
   try { localStorage.setItem(PIN_KEY, JSON.stringify(list)) } catch { /* приватный режим */ }
 }
+/** Черновой раздел: открытый — в ссылке, отложенные — в этом браузере */
+const DRAFT_KEY = 'pm.drafts'
+export const DRAFT_ROUTE = 'draft'
+function loadDrafts(): Draft[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(DRAFT_KEY) || '[]') as unknown[]
+    return raw.map(vetDraft).filter(Boolean) as Draft[]
+  } catch { return [] }
+}
+function storeDrafts(list: Draft[]) {
+  try { localStorage.setItem(DRAFT_KEY, JSON.stringify(list)) } catch { /* приватный режим */ }
+}
+/** Открытый черновик берём из ссылки: она и есть способ им поделиться */
+function loadDraft(): Draft | null {
+  const q = new URLSearchParams(location.hash.slice(1))
+  return decodeDraft(q.get('draft') || '')
+}
+/** Пришедший по ссылке черновик кладём и в список: иначе, открыв чужую
+    ссылку и уйдя на другой экран, его больше негде взять. */
+function mergeDraft(list: Draft[], one: Draft | null) {
+  if (!one || list.some((d) => d.title === one.title)) return list
+  const next = [one, ...list].slice(0, 12)
+  storeDrafts(next)
+  return next
+}
+
 /** Свои темы — то же хранилище, но только про оформление */
 const THEME_KEY = 'pm.themes'
 function loadThemes(): Ui['themes'] {
@@ -150,6 +177,9 @@ interface Ctx {
   patchUi: (p: Partial<Ui>) => void
   /** Копия состояния для движка прототипа. */
   snapshot: AppSnapshot
+  /** Открытый черновой раздел и отложенные: их рисует не движок, а draft.ts */
+  draft: Draft | null
+  drafts: Draft[]
 }
 
 /* Контекст открыт наружу ради scripts/panel.mjs: он рендерит панель
@@ -181,6 +211,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const modal = useRef<string | null>(null)
   const openGroups = useRef<Record<string, boolean>>({ fin: false, tools: false, ref: false, sfin: false })
   const panel = useRef(false)
+  /* Черновик — не ось: это содержимое, а не состояние продукта. Поэтому
+     он живёт своим полем и своим параметром ссылки, мимо AXES и DEF. */
+  const draft = useRef<Draft | null>(loadDraft())
+  const drafts = useRef<Draft[]>(mergeDraft(loadDrafts(), draft.current))
   const toasts = useRef<{ id: number; msg: string }[]>([])
   const toastId = useRef(0)
 
@@ -231,7 +265,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   /* Сценарий живёт в хэше — ссылку можно отправить команде. */
   useEffect(() => {
     const q = hashOf(S.current)
-    history.replaceState(null, '', location.pathname + (q ? '#' + q : ''))
+    /* Черновик уезжает в ссылку целиком: у коллеги его взять больше
+       неоткуда — в прототипе такого раздела нет. Сценарий пишем первым,
+       чтобы длинный параметр не мешал читать ссылку глазами. */
+    const d = draft.current ? encodeDraft(draft.current) : ''
+    const hash = [q, d && 'draft=' + d].filter(Boolean).join('&')
+    history.replaceState(null, '', location.pathname + (hash ? '#' + hash : ''))
     try { localStorage.setItem('pm', q) } catch { /* приватный режим */ }
   })
 
@@ -756,6 +795,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       /* монета вне набора ссылки наблюдателя переключается на доступную (28:44088) */
       const coins = coinsOf()
       if (coins && !coins.has(S.current.coin)) S.current.coin = [...coins][0]
+      /* Черновик — песочница поверх прототипа: прав на него нет ни у кого,
+         поэтому роль его не закрывает и не выкидывает с маршрута */
+      if (route === DRAFT_ROUTE) return
       const ok = allowed()
       if (!ok || ok.has(route)) return
       const next = ['home', 'workers', 'assets', 'income', 'payouts', 'ref'].find((r) => ok.has(r))
@@ -909,6 +951,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const uu = U.current
         uu.chatwait = false
         uu.chat = [...(uu.chat || []), { role: 'bot', text: a.say + note }]
+        if (a.draft) {
+          draft.current = a.draft
+          /* Черновик остаётся в списке: по одному в ссылке, остальные ждут
+             в этом браузере — иначе каждая новая идея затирала бы прошлую */
+          drafts.current = [a.draft, ...drafts.current.filter((d) => d.title !== a.draft!.title)].slice(0, 12)
+          storeDrafts(drafts.current)
+          if (route !== DRAFT_ROUTE) go(DRAFT_ROUTE)
+        }
         if (a.apply) { pushHist(); Object.assign(S.current, a.apply) }
         if (a.modal) modal.current = a.modal
         /* Подсказки под ответом кладём отдельным сообщением: разметка читает
@@ -924,13 +974,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (aiUrl()) {
         u.chatwait = true
         const asked = { ...S.current }
-        void ask(text, asked, dark).then((a) => {
+        void ask(text, asked, dark, draft.current).then((a) => {
           if (a) return take(a)
-          take(answer(text, S.current, dark), ' (прокси не ответил — разобрал сам)')
+          take(answer(text, S.current, dark, draft.current), ' (прокси не ответил — разобрал сам)')
         })
         return bump()
       }
-      take(answer(text, S.current, dark))
+      take(answer(text, S.current, dark, draft.current))
       return
     }
     if (at('[data-chatclear]')) { u.chat = []; u.chatchips = []; return bump() }
@@ -1101,6 +1151,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       return bump()
     }
+    /* ==== Черновые разделы ==== */
+    const dgo = at('[data-draftgo]')
+    if (dgo) {
+      const found = drafts.current.find((d) => d.title === dgo.dataset.draftgo)
+      if (found) { draft.current = found; go(DRAFT_ROUTE) }
+      return bump()
+    }
+    const ddel = at('[data-draftdel]')
+    if (ddel) {
+      const name = ddel.dataset.draftdel
+      drafts.current = drafts.current.filter((d) => d.title !== name)
+      storeDrafts(drafts.current)
+      /* Удалили тот, что открыт — уходим с маршрута: показывать нечего */
+      if (draft.current?.title === name) {
+        draft.current = null
+        if (route === DRAFT_ROUTE) go(HOME)
+      }
+      return bump()
+    }
+    if (at('[data-draftclose]')) {
+      draft.current = null
+      if (route === DRAFT_ROUTE) go(HOME)
+      return bump()
+    }
+
     /* ==== Свои темы: оформление отдельно от сценария ==== */
     if (at('[data-themesave]')) {
       const inp = document.getElementById('scthname') as HTMLInputElement | null
@@ -1222,6 +1297,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toasts: toasts.current,
     onClick, onInput, toast, go, patchUi,
     snapshot: snap,
+    draft: draft.current,
+    drafts: drafts.current,
   }
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>

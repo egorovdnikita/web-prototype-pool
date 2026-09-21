@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import { createServer } from 'vite';
 
 /** Компактный справочник: только то, что нужно модели для ответа */
-export function buildCatalog(proto, theme) {
+export function buildCatalog(proto, theme, draft) {
   const { AXES, TITLES, SCREEN_NAMES, MODALS, AX_STYLE } = proto;
   const axes = {};
   for (const [k, ax] of Object.entries(AXES)) {
@@ -32,7 +32,20 @@ export function buildCatalog(proto, theme) {
     if (tok.themed) tokens[k].themed = true;
     if (tok.type === 'num') { tokens[k].min = tok.min; tokens[k].max = tok.max; }
   }
-  return { axes, screens, modals, tokens, base: theme.BASE, baseDark: theme.BASE_DARK };
+  /* Блоки черновика: из чего модель может собрать новый раздел */
+  const draftBlocks = {
+    stats: 'items: [{label, value, note?}] — плашки с показателями',
+    table: 'cols: [заголовок], rows: [[ячейка]] — таблица дизайн-системы',
+    chart: 'title? — график хэшрейта из прототипа',
+    empty: 'title, text? — пустое состояние с иллюстрацией',
+    tabs: 'items: [название] — Segment Control',
+    actions: 'items: [подпись] — кнопки (ничего не делают)',
+    text: 'title?, text — абзац текста',
+  };
+  return {
+    axes, screens, modals, tokens, base: theme.BASE, baseDark: theme.BASE_DARK,
+    draftBlocks, draftCaps: draft.CAPS,
+  };
 }
 
 export const catalogPath = (root) => root + 'worker/catalog.json';
@@ -43,7 +56,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const vite = await createServer({ server: { middlewareMode: true }, appType: 'custom', logLevel: 'error' });
   const proto = await vite.ssrLoadModule('/src/legacy/prototype.js');
   const theme = await vite.ssrLoadModule('/src/theme.ts');
-  const cat = buildCatalog(proto, theme);
+  const draft = await vite.ssrLoadModule('/src/draft.ts');
+  const cat = buildCatalog(proto, theme, draft);
   fs.writeFileSync(catalogPath(root), JSON.stringify(cat, null, 1) + '\n');
   await vite.close();
   const size = (fs.statSync(catalogPath(root)).size / 1024).toFixed(1);

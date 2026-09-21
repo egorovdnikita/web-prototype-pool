@@ -41,6 +41,7 @@ const ui = (extra = {}) => ({
 const ctx = (S, U, extra = {}) => ({
   S, U, route: 'home', pop: null, modal: null, openGroups: {}, mini: false,
   panel: true, toasts: [], onClick() {}, onInput() {}, toast() {}, go() {}, patchUi() {},
+  draft: null, drafts: [],
   snapshot: { S, U, route: 'home', pop: null, modal: null, openGroups: {}, mini: false },
   ...extra,
 });
@@ -236,7 +237,7 @@ run('открыта модалка', { ...DEF }, ui(), { modal: 'export' }, (htm
 {
   const { buildCatalog, catalogPath } = await import('./catalog.mjs');
   const theme = await vite.ssrLoadModule('/src/theme.ts');
-  const fresh = buildCatalog(proto, theme);
+  const fresh = buildCatalog(proto, theme, await vite.ssrLoadModule('/src/draft.ts'));
   const onDisk = JSON.parse(fs.readFileSync(catalogPath(P), 'utf8'));
   if (JSON.stringify(fresh) !== JSON.stringify(onDisk))
     fail('worker/catalog.json разошёлся с прототипом — соберите заново: npm run catalog');
@@ -310,6 +311,93 @@ run('открыта модалка', { ...DEF }, ui(), { modal: 'export' }, (htm
     ui({ sctab: 'sty', stystash: { font: 'inter' } }), {},
     (html) => html.includes('Вернуть тему') ? null : 'кнопка не переключилась');
   if (!peek.includes('без темы')) fail('не сказано, что тема снята');
+}
+
+/* 8f. Черновой раздел: спецификация, ссылка, разметка и разбор фраз */
+{
+  const D = await vite.ssrLoadModule('/src/draft.ts');
+  const good = { title: 'Бонусы', blocks: [
+    { t: 'stats', items: [{ label: 'Всего', value: '128' }] },
+    { t: 'table', cols: ['Дата', 'Событие'], rows: [['01.02', 'Начисление']] },
+  ] };
+  if (!D.vetDraft(good)) fail('годный черновик не принят');
+  if (D.vetDraft({ title: 'Пусто', blocks: [] })) fail('черновик без блоков принят');
+  if (D.vetDraft({ title: '', blocks: [{ t: 'chart' }] })) fail('черновик без названия принят');
+  if (D.vetDraft({ title: 'X', blocks: [{ t: 'script' }, { t: 'iframe' }] }))
+    fail('неизвестные блоки не отброшены');
+  /* Пределы держат длину ссылки: без них черновик в неё не влезет */
+  const fat = D.vetDraft({ title: 'я'.repeat(200), blocks: Array(20).fill({ t: 'chart' }) });
+  if (fat.title.length !== D.CAPS.title) fail('название не обрезано');
+  if (fat.blocks.length !== D.CAPS.blocks) fail('число блоков не ограничено');
+  const wide = D.vetDraft({ title: 'T', blocks: [{ t: 'table',
+    cols: Array(20).fill('к'), rows: Array(20).fill(Array(20).fill('я'.repeat(80))) }] });
+  if (wide.blocks[0].cols.length !== D.CAPS.cols) fail('колонки не ограничены');
+  if (wide.blocks[0].rows.length !== D.CAPS.rows) fail('строки не ограничены');
+  if (wide.blocks[0].rows[0][0].length !== D.CAPS.cell) fail('ячейка не обрезана');
+  /* Ссылка: круг без потерь и разумная длина */
+  const enc = D.encodeDraft(D.vetDraft(good));
+  if (JSON.stringify(D.decodeDraft(enc)) !== JSON.stringify(D.vetDraft(good)))
+    fail('черновик не пережил ссылку');
+  if (D.decodeDraft('не-base64')) fail('мусор из ссылки не отброшен');
+  if (D.decodeDraft(D.encodeDraft({ title: 'X', blocks: [{ t: 'script' }] }))) fail('мусор пролез через ссылку');
+  const big = D.encodeDraft(D.vetDraft({ title: 'я'.repeat(60), blocks: [
+    { t: 'stats', items: Array(6).fill({ label: 'я'.repeat(40), value: 'я'.repeat(40) }) },
+    { t: 'table', cols: Array(6).fill('я'.repeat(30)), rows: Array(8).fill(Array(6).fill('я'.repeat(30))) },
+    { t: 'text', title: 'я'.repeat(40), text: 'я'.repeat(200) },
+    { t: 'tabs', items: Array(6).fill('я'.repeat(40)) },
+    { t: 'actions', items: Array(6).fill('я'.repeat(40)) },
+    { t: 'chart', title: 'я'.repeat(40) }] }));
+  if (big.length > D.CAPS.link) fail(`черновик не влезает в ссылку: ${big.length} символов`);
+  /* Обрезка идёт с конца и не съедает черновик целиком */
+  if (!D.vetDraft({ title: 'T', blocks: Array(6).fill({ t: 'table',
+    cols: Array(5).fill('колонка'), rows: Array(6).fill(Array(5).fill('значение ячейки')) }) }).blocks.length)
+    fail('обрезка съела все блоки');
+  /* Разметка: всё чужое экранируется — черновик приезжает по ссылке */
+  proto.applyState({ S: { ...DEF }, U: ui(), route: 'draft', pop: null, modal: null, openGroups: {}, mini: false });
+  const m = proto.M();
+  const html = D.renderDraft(D.vetDraft({ title: '<img src=x onerror=alert(1)>', blocks: [
+    { t: 'stats', items: [{ label: '<b>жир</b>', value: '1' }] },
+    { t: 'table', cols: ['<script>'], rows: [['"кавычки"']] },
+    { t: 'empty', title: 'Пусто', text: 'Ничего' },
+    { t: 'actions', items: ['Кнопка'] },
+    { t: 'chart', title: 'График' }] }), m);
+  if (html.includes('<img src=x') || html.includes('<script>') || html.includes('<b>жир</b>'))
+    fail('содержимое черновика попало в разметку как есть');
+  if (!html.includes('&lt;script&gt;')) fail('текст не экранирован');
+  if (!html.includes('Черновик')) fail('нет плашки «черновик»');
+  if (!html.includes('class="tbl"') || !html.includes('statcard')) fail('блоки собраны не из дизайн-системы');
+  if (!html.includes('<svg')) fail('график не нарисовался');
+
+  /* Разбор фраз */
+  const dr = (text, cur = null) => answer(text, { ...DEF }, false, cur).draft;
+  const made = dr('новый раздел Бонусы');
+  if (made?.title !== 'Бонусы') fail(`«новый раздел Бонусы» дал ${made && made.title}`);
+  if (!dr('сделай экран про рефералов')) fail('«сделай экран» не собрал черновик');
+  const added = dr('добавь вкладки', made);
+  if (!added || added.blocks.filter((b) => b.t === 'tabs').length !== 1) fail('вкладки не добавились');
+  const cut = dr('убери график', made);
+  if (!cut || cut.blocks.some((b) => b.t === 'chart')) fail('график не убрался');
+  if (answer('добавь вкладки', { ...DEF }, false, null).draft) fail('правка без черновика собрала раздел');
+  /* Навигация не должна превращаться в генерацию */
+  for (const q of ['открой выплаты', 'открой раздел воркеры', 'авария на парке', 'фон темнее']) {
+    if (answer(q, { ...DEF }, false, null).draft) fail(`«${q}» собрала черновик`);
+  }
+
+  /* Ответ модели с черновиком проходит ту же проверку */
+  const { vetAnswer } = await vite.ssrLoadModule('/src/ai.ts');
+  const fromAi = vetAnswer({ say: 'Собрал', draft: good }, { ...DEF }, false);
+  if (fromAi.answer.draft?.title !== 'Бонусы') fail('черновик от модели не принят');
+  const badAi = vetAnswer({ say: 'Собрал', draft: { title: 'X', blocks: [{ t: 'iframe' }] } }, { ...DEF }, false);
+  if (badAi.answer.draft) fail('негодный черновик от модели принят');
+  if (!badAi.dropped.length) fail('про отброшенный черновик не сказали');
+
+  const withDrafts = run('«Переходы» с черновиками', { ...DEF }, ui({ sctab: 'go' }), {
+    drafts: [D.vetDraft(good)], draft: D.vetDraft(good),
+  }, (html) => html.includes('data-draftgo="Бонусы"') ? null : 'черновик не попал в список');
+  if (!withDrafts.includes('data-draftdel="Бонусы"')) fail('черновик нельзя удалить');
+  if (!withDrafts.includes('data-draftclose')) fail('нет кнопки «убрать из ссылки»');
+  run('«Переходы» без черновиков', { ...DEF }, ui({ sctab: 'go' }), {},
+    (html) => html.includes('новый раздел Бонусы') ? null : 'нет подсказки про черновик');
 }
 
 /* 9. Обучение: каждый шаг рисуется и ведёт на следующий */

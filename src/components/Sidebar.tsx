@@ -1,9 +1,9 @@
 import { allowed, GROUP_OF, I, LINKS, LOGO, NAV, SUM_NAV, SUM_ROUTES } from '@/legacy/prototype'
-import { useApp } from '@/state/store'
+import { DRAFT_ROUTE, useApp } from '@/state/store'
 import { Ico } from './Raw'
 
 export function Sidebar() {
-  const { route, openGroups, mini } = useApp()
+  const { route, openGroups, mini, draft } = useApp()
   /* У наблюдателя в сайдбаре только разрешённые разделы (макеты 189:154154…) */
   const ok = allowed()
   /* «Серийные номера» и деталка живут внутри «Воркеров» — подсвечиваем их */
@@ -50,6 +50,18 @@ export function Sidebar() {
             </button>
           )
         })}
+        {/* Черновик — не раздел продукта, поэтому стоит после всех,
+            за разделителем и с пометкой: иначе через неделю его покажут
+            как согласованный экран. */}
+        {draft && !sum && (
+          <>
+            <div className="sep" />
+            <button className={`ni draftni ${route === DRAFT_ROUTE ? 'on' : ''}`} data-go={DRAFT_ROUTE}>
+              <Ico className="nic" html={I.edit || I.doc} />
+              <span className="lbl">{draft.title}<i>черновик</i></span>
+            </button>
+          </>
+        )}
       </nav>
       {/* «База знаний» в режиме сводки не показывается */}
       {!sum && (

@@ -2237,6 +2237,14 @@ html{scrollbar-gutter:stable}
 .scown b{color:var(--accent);font-weight:700;flex:0 0 auto}
 .scown span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .scown button{flex:0 0 auto;color:var(--accent);font-weight:600;text-decoration:underline}
+/* Черновой раздел: в сайдбаре с пометкой, на экране — с плашкой сверху.
+   Он не сверялся с макетами, и по нему это должно быть видно сразу. */
+.draftni .lbl{display:flex;align-items:center;gap:6px}
+.draftni .lbl i{font-style:normal;font-size:var(--fs-c2);line-height:var(--lh-c2);font-weight:700;
+  text-transform:uppercase;letter-spacing:.04em;color:var(--warn);
+  background:var(--warn-sub);border-radius:var(--r-f);padding:2px 6px}
+.draftnote .ch{align-items:center;gap:8px}
+.draftnote p{color:var(--c2);margin-top:4px}
 /* Пока ждём ответа прокси — реплика с многоточием вместо ответа */
 .scmsg.wait{opacity:.6;font-style:italic}
 /* Тонкая настройка: что набрано фразами, с крестиком на каждый токен */

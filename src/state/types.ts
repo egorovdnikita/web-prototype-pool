@@ -112,6 +112,8 @@ export interface Scenario {
   radius: string
   space: string
   icons: string
+  /** Патч токенов оформления, строка из src/theme.ts */
+  tune: string
   load: string
   neterr: string
 }

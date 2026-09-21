@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { CHAT_HINTS } from '@/chat'
 import { AXES, AX_OWN, AX_STYLE, AXCAT, PRESETS, DEF, SCREEN_NAMES, TITLES, MODALS, ICON_PACKS, iconSample, FONTS } from '@/legacy/prototype'
 import { useApp } from '@/state/store'
+import { parseTune, tuneList, tuneWarnings } from '@/theme'
 import type { Scenario, Ui } from '@/state/types'
 
 type Key = keyof Scenario
@@ -11,7 +12,8 @@ const TABS: [NonNullable<Ui['sctab']>, string][] = [
 ]
 /* Оси оформления живут на своей вкладке — в списке состояний продукта им не место */
 const STY = (k: string) => AX_STYLE.has(k)
-const STY_N = AX_STYLE.size
+/* В счётчике «из N» tune не участвует: это не переключатель, а патч токенов */
+const STY_N = AX_STYLE.size - 1
 /* Ширины панели кнопками. Первая — значение по умолчанию из freshUi: иначе
    ни одна кнопка не подсвечена, пока её не нажали. Между ними ширина тянется
    за край мышью, поэтому кнопка может быть не подсвечена ни одна. */
@@ -106,7 +108,12 @@ export function ScenarioPanel() {
   const packs = ICON_PACKS.filter(([, name, note]: [string, string, string]) =>
     hitAxis('icons') || hit(name) || hit(note))
   const styRows = (['radius', 'space'] as Key[]).filter(hitAxis)
-  const styEmpty = !fonts.length && !accents.length && !packs.length && !styRows.length
+  /* Тонкая настройка: патч токенов, набранный фразами в чате */
+  const tune = parseTune(S.tune)
+  const tuneRows = tuneList(tune)
+  const tuneShown = hitAxis('tune') || tuneRows.some((r) => hit(r.label) || hit(r.value))
+  const tuneWarn = tuneWarnings(tune, S.theme === 'dark')
+  const styEmpty = !fonts.length && !accents.length && !packs.length && !styRows.length && !tuneShown
 
   const axisRow = (k: Key) => (
     <div className={`scg ${S[k] !== DEF[k] ? 'dirty' : ''}`} key={k}>
@@ -227,7 +234,10 @@ export function ScenarioPanel() {
         {changedSty.length > 0 && (
           <div className="scown">
             <b>Своя тема</b>
-            <span>оформление изменено: {changedSty.length} из {STY_N}</span>
+            <span>
+              оформление изменено: {changedSty.filter((k) => k !== 'tune').length} из {STY_N}
+              {tuneRows.length > 0 && `, токенов ${tuneRows.length}`}
+            </span>
             <button data-styreset>Вернуть</button>
           </div>
         )}
@@ -297,6 +307,7 @@ export function ScenarioPanel() {
           <div className="scchat">
             <p className="scdesc">
               Чат включает состояния словами: «авария на парке», «тёмная тема», «открой выплаты».
+              Оформление тоже меняет: «фон темнее», «скругления 4», «крупнее текст».
               Разбор запроса пока свой, без модели — прототип раздаётся статикой, ключу от API
               там негде лежать.
             </p>
@@ -394,6 +405,43 @@ export function ScenarioPanel() {
               </div>
             </section>
 
+            )}
+
+            {tuneShown && (
+            <section className="scsec">
+              <div className="scshead"><div className="scsect plain">Тонкая настройка
+                {tuneRows.length > 0 && <span className="scqty">{tuneRows.length}</span>}</div></div>
+              <p className="scdesc">
+                Поверхности, текст, статусные цвета, масштаб текста и размеры контролов —
+                поверх дизайн-системы. Набирается фразами в чате: кнопок на каждый токен
+                было бы два десятка, а фраза короче. Цвета поверхностей и текста хранятся
+                для светлой и тёмной темы отдельно.
+              </p>
+              {tuneRows.length > 0 ? (
+                <>
+                  <div className="sctune">
+                    {tuneRows.map((r) => (
+                      <span key={r.k}>
+                        {r.label}<b>{r.value}</b>
+                        <button data-tunedel={r.k} aria-label={`Убрать: ${r.label}`}>×</button>
+                      </span>
+                    ))}
+                  </div>
+                  {tuneWarn.length > 0 && (
+                    <p className="scnote">Контраст ниже нормы: {tuneWarn.join('; ')}.</p>
+                  )}
+                  <div className="scbar">
+                    <button className="scchip" data-axreset="tune">Убрать тонкую настройку</button>
+                  </div>
+                </>
+              ) : (
+                <div className="scbar">
+                  {['фон темнее', 'карточки белые', 'скругления 4', 'крупнее текст', 'сайдбар 300'].map((c) => (
+                    <button className="scchip" data-chatsay={c} key={c}>{c}</button>
+                  ))}
+                </div>
+              )}
+            </section>
             )}
 
             {styEmpty && <p className="scnote">Ничего не нашлось. Сбросьте поиск.</p>}

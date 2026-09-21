@@ -3,6 +3,7 @@ import {
   type ReactNode,
 } from 'react'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
+import { cleanTune, cssVars, parseTune, tuneStr, ALL_VARS } from '@/theme'
 import { AXES, DEF, MODELS, PRESETS, GROUP_OF, M, allowed, groups, tagsOf, applyState, workersList, workersRows, obsOf, subsOf, coinsOf, SUM_ROUTES, AX_STYLE, FONTS, fontStack, fontsHref } from '@/legacy/prototype'
 import type { AppSnapshot, Scenario, Ui } from './types'
 import { TOUR, markTourSeen, tourSeen } from '@/tour'
@@ -88,6 +89,7 @@ export function okValue(k: keyof Scenario, v: string) {
   const ax = AXES[k]
   if (!ax) return false
   if (ax.opts.some(([o]: [string, string]) => o === v)) return true
+  if (ax.free === 'tune') return cleanTune(v) === v
   return ax.free === 'color' && /^[0-9a-f]{6}$/i.test(v)
 }
 
@@ -111,6 +113,10 @@ function loadScenario(): Scenario {
     const v = q.get(k)
     if (v && okValue(k, v)) out[k] = v
   }
+  /* Тема — единственное свободное значение сложнее цвета: вместо «всё или
+     ничего» чиним её по частям, иначе одна опечатка в ссылке уносит патч
+     целиком. Незнакомые ключи и числа вне диапазона отбрасываются. */
+  out.tune = cleanTune(q.get('tune') || '')
   return out
 }
 
@@ -285,6 +291,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const f = S.current.font
     el.style.setProperty('--font', fontStack(f))
     if (FONTS[f]?.g || U.current.sctab === 'sty') ensureFonts()
+    /* Тонкая настройка ложится последней: она сильнее осей оформления
+       (тот же inline-стиль, но записан после) и сильнее тёмной темы —
+       поэтому цвета поверхностей и текста хранятся в патче отдельно
+       для светлой и тёмной. Снятые ключи убираем: иначе прошлое
+       значение остаётся висеть на <html>. */
+    const vars = cssVars(parseTune(S.current.tune), eff === 'dark')
+    const set = new Set(vars.map(([n]) => n))
+    for (const n of ALL_VARS) if (!set.has(n)) el.style.removeProperty(n)
+    for (const [n, v] of vars) el.style.setProperty(n, v)
   })
 
   useEffect(() => {
@@ -870,7 +885,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const text = said ? said.dataset.chatsay! : (inp?.value || '').trim()
       if (!text) return
       if (inp && !said) inp.value = ''
-      const a = answer(text)
+      const eff = S.current.theme === 'system'
+        ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+        : S.current.theme
+      /* Подсказку можно нажать и со вкладки «Стиль» — тогда переезжаем
+         в чат, иначе ответ уходит в невидимую переписку */
+      u.sctab = 'chat'
+      const a = answer(text, S.current, eff === 'dark')
       u.chat = [...(u.chat || []), { role: 'you', text }, { role: 'bot', text: a.say }]
       if (a.apply) { pushHist(); Object.assign(S.current, a.apply) }
       if (a.modal) modal.current = a.modal
@@ -882,6 +903,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return bump()
     }
     if (at('[data-chatclear]')) { u.chat = []; u.chatchips = []; return bump() }
+    /* Один токен из тонкой настройки: остальные остаются как были */
+    const td = at('[data-tunedel]')
+    if (td) {
+      pushHist()
+      const t = parseTune(S.current.tune)
+      delete t[td.dataset.tunedel!]
+      S.current.tune = tuneStr(t)
+      return bump()
+    }
 
     /* ==== Обучение ==== */
     if (at('[data-tour]')) { u.tour = 0; applyTourStep(0); return bump() }

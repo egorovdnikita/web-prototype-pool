@@ -114,8 +114,55 @@ H('F. панель сценариев: связность осей');
   for(const [name,blockEnd] of [['AX_OWN','const AX_STYLE'],['AX_STYLE','const AXES={']])
     for(const m of cut('const '+name+'=new Set(',blockEnd).matchAll(/'([a-z0-9]+)'/g))
       if(!AX[m[1]]) out.push('  ! '+name+'.'+m[1]+' — оси нет');
-  out.push('  осей '+ax.length+', из них оформление 5, придуманных '
+  out.push('  осей '+ax.length+', из них оформление '
+    +[...cut('const AX_STYLE=new Set(','const AXES={').matchAll(/'[a-z0-9]+'/g)].length+', придуманных '
     +[...cut('const AX_OWN=new Set(','const AX_STYLE').matchAll(/'[a-z0-9]+'/g)].length);
+}
+
+/* G. тема: белый список токенов и база в theme.ts против app.css.
+   Если дизайн-система поедет, а theme.ts нет, «фон темнее» начнёт
+   считаться от вчерашнего цвета — молча и неправильно. */
+H('G. тонкая настройка темы против app.css');
+{
+  const th=fs.readFileSync(P+'src/theme.ts','utf8');
+  const obj=(name)=>{ const i=th.indexOf('export const '+name);
+    const s=th.indexOf('{',i), e=th.indexOf('}',s);
+    return Object.fromEntries([...th.slice(s,e).matchAll(/(\w+):\s*'([^']*)'/g)].map(m=>[m[1],m[2]])); };
+  const BASE=obj('BASE'), BASE_DARK=obj('BASE_DARK');
+  /* ключ токена → первая CSS-переменная */
+  const TOK={};
+  for(const m of th.matchAll(/^\s{2}(\w+):\s*\{ css: \['(--[a-z0-9-]+)'/gm)) TOK[m[1]]=m[2];
+  const block=(head)=>{ const i=css.indexOf(head); const s=css.indexOf('{',i);
+    let d=0,e=s; for(;e<css.length;e++){ if(css[e]==='{')d++; else if(css[e]==='}'&&!--d) break; }
+    return Object.fromEntries([...css.slice(s,e).matchAll(/(--[a-z0-9-]+)\s*:\s*([^;\n]+)/g)]
+      .map(m=>[m[1],m[2].trim()])); };
+  const root=block(':root{'), dark=block(':root[data-theme="dark"]{');
+  const val=(name,map)=>{ let v=map[name]??root[name]; 
+    for(let i=0;i<4&&v&&v.startsWith('var(');i++){ const n=v.slice(4,v.indexOf(')')); v=map[n]??root[n]; }
+    return v; };
+  const norm=(v)=>{ if(!v) return v; let s=v.replace('#','').toLowerCase();
+    if(s.length===3) s=s.split('').map(c=>c+c).join('');
+    return s.slice(0,6); };
+  const num=(v)=>{ if(!v) return NaN; const m=v.match(/-?[\d.]+/); return m?+m[0]:NaN; };
+  let bad=0;
+  for(const [k,cssvar] of Object.entries(TOK)){
+    const want=BASE[k]; if(want===undefined){ out.push('  ! '+k+' — нет в BASE'); bad++; continue; }
+    const got=val(cssvar,root);
+    if(/^[0-9a-f]{6}$/.test(want)){
+      if(norm(got)!==want){ out.push('  ! '+cssvar+' — в app.css '+got+', в theme.ts #'+want); bad++; }
+    } else {
+      /* множители (--rk, --spk, --fsk) хранятся в процентах */
+      const mult=['rk','spk','fsk'].includes(k);
+      const g=num(got)*(mult?100:1);
+      if(Math.round(g)!==+want){ out.push('  ! '+cssvar+' — в app.css '+got+', в theme.ts '+want); bad++; }
+    }
+    const wd=BASE_DARK[k];
+    if(wd!==undefined&&norm(val(cssvar,dark))!==wd){
+      out.push('  ! '+cssvar+' в тёмной — в app.css '+val(cssvar,dark)+', в theme.ts #'+wd); bad++; }
+  }
+  for(const k of Object.keys(BASE_DARK)) if(!TOK[k]){ out.push('  ! BASE_DARK.'+k+' — токена нет'); bad++; }
+  if(!bad) out.push('  токенов '+Object.keys(TOK).length+', из них тёмных двойников '
+    +Object.keys(BASE_DARK).length+' — сходятся с app.css');
 }
 
 console.log(out.join('\n'));

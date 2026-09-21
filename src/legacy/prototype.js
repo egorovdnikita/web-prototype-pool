@@ -40,7 +40,7 @@ const AX_OWN=new Set(['numfmt','tzview','prec','fiat','trend','noise','gap','rej
 /* Оси оформления: это не состояния продукта, а эксперимент с внешним видом —
    шрифт, акцент, скругления, отступы и набор иконок. В списке осей их нет,
    у них своя вкладка «Стиль»; в AX_OWN они тоже, кадра в макетах у них нет. */
-const AX_STYLE=new Set(['font','accent','radius','space','icons']);
+const AX_STYLE=new Set(['font','accent','radius','space','icons','tune']);
 const AXES={
   /* ---- Данные ---- */
   coin:{g:'Данные',label:'Монета',note:'Меняет парк, балансы и единицы хэшрейта',
@@ -237,6 +237,11 @@ const AXES={
   icons:{g:'Стиль',label:'Иконки',note:'Пять наборов: дизайн-система и четыре открытых',
     opts:[['ds','Дизайн-система'],['sharp','Material Sharp'],['line','Lucide'],
       ['thin','Phosphor Thin'],['fill','Material Design']]},
+  /* Тонкая настройка: патч токенов поверх дизайн-системы. Значение свободное —
+     строка вида t1_bg-f5f5f5, её собирает и проверяет src/theme.ts. Готовых
+     вариантов у оси два: «как в ДС» и то, что набрали фразами в чате. */
+  tune:{g:'Стиль',label:'Тонкая настройка',note:'Поверхности, текст, статусные цвета, масштаб и размеры — фразой в чате',
+    free:'tune',opts:[['','Как в дизайн-системе']]},
 
   /* ---- Вход ---- */
   achan:{g:'Вход',label:'Канал входа',note:'Страницы «пароль и почта» и «пароль и телефон»',
@@ -354,7 +359,7 @@ const DEF={
   oerr:'no',saerr:'no',
   achan:'mail',lerr:'no',rerr:'no',pwv:'no',a2fa:'no',otperr:'ok',
   theme:'light',dens:'norm',fsz:'norm',side:'full',motion:'on',grid:'off',outline:'off',toast:'on',
-  font:'gilroy',accent:'ds',radius:'ds',space:'ds',icons:'ds',
+  font:'gilroy',accent:'ds',radius:'ds',space:'ds',icons:'ds',tune:'',
   load:'no',neterr:'no',
 };
 let S={...DEF}, route='home', pop=null, modal=null, openGroups={fin:false,tools:false,ref:false,sfin:false}, mini=false;

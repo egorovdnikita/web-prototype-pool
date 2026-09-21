@@ -71,7 +71,9 @@ for (const k of prod) {
 }
 for (const k of AX_STYLE) {
   if (all.ax.includes(`data-axis="${k}"`)) fail(`ось оформления ${k} видна в списке осей`);
-  if (!all.sty.includes(`data-axis="${k}"`) && k !== 'accent' && k !== 'font' && k !== 'icons')
+  /* У шрифта, акцента, иконок и тонкой настройки своя разметка,
+     а не ряд кнопок data-axis — их проверяем отдельно ниже */
+  if (!all.sty.includes(`data-axis="${k}"`) && !['accent', 'font', 'icons', 'tune'].includes(k))
     fail(`ось оформления ${k} не попала на вкладку «Стиль»`);
 }
 /* 3. Значений столько же, сколько в описании осей */
@@ -157,6 +159,77 @@ run('открыта модалка', { ...DEF }, ui(), { modal: 'export' }, (htm
     ui({ sctab: 'chat', chat: [{ role: 'you', text: 'привет' }, { role: 'bot', text: 'здравствуйте' }] }), {},
     (html) => html.includes('привет') && html.includes('здравствуйте') ? null : 'переписка не отрисовалась');
   if (!withChat.includes('data-chatsend')) fail('в чате нет кнопки отправки');
+}
+
+/* 8b. Тонкая настройка: модель темы и её секция на вкладке «Стиль» */
+{
+  const T = await vite.ssrLoadModule('/src/theme.ts');
+  const round = (s) => T.tuneStr(T.parseTune(s));
+  const good = 't1_bg-102030_c1-fafafa_rk-25_sb-300';
+  if (round(good) !== good) fail(`тема не пережила запись и чтение: ${round(good)}`);
+  if (round('') !== '') fail('пустая тема должна оставаться пустой');
+  if (round('bg-102030') !== '') fail('тема без версии должна отбрасываться');
+  /* Мусор выкидывается по одному ключу, остальное живёт */
+  if (round('t1_bg-zzzzzz_rk-999_sb-300_нет-1') !== 't1_sb-300') fail('мусор в теме не отброшен');
+  /* Порядок ключей не зависит от порядка ввода: одна тема — одна строка */
+  if (T.tuneStr({ rk: '25', bg: '102030' }) !== 't1_bg-102030_rk-25') fail('порядок ключей в теме плавает');
+  /* Светлые и тёмные цвета не пересекаются */
+  const vars = (s, dark) => Object.fromEntries(T.cssVars(T.parseTune(s), dark));
+  if (vars('t1_bg-102030', true)['--bg']) fail('светлый цвет протёк в тёмную тему');
+  if (vars('t1_dbg-102030', true)['--bg'] !== '#102030') fail('тёмный цвет не применился');
+  if (vars('t1_dbg-102030', false)['--bg']) fail('тёмный цвет протёк в светлую тему');
+  if (vars('t1_rk-50', false)['--rk'] !== '0.5') fail('множитель скруглений считается неверно');
+  if (vars('t1_hb-40', false)['--h-btn-sm'] !== '32px') fail('малая кнопка не поехала за большой');
+  /* Контраст: белое на чёрном — 21, и предупреждение только на то, что тронули */
+  if (T.contrast('ffffff', '000000') !== 21) fail('контраст считается неверно');
+  if (T.tuneWarnings(T.parseTune(''), false).length) fail('дизайн-система сама по себе не предупреждает');
+  if (!T.tuneWarnings(T.parseTune('t1_bg-777777'), false).length) fail('серое на сером не поймано');
+  /* Каждая переменная белого списка есть в ALL_VARS: иначе она застрянет */
+  for (const tok of Object.values(T.TOKENS)) for (const v of tok.css) {
+    if (!T.ALL_VARS.includes(v)) fail(`переменная ${v} не снимается при сбросе темы`);
+  }
+
+  const empty = run('«Стиль» без тонкой настройки', { ...DEF }, ui({ sctab: 'sty' }), {},
+    (html) => html.includes('Тонкая настройка') ? null : 'нет секции тонкой настройки');
+  if (!empty.includes('data-chatsay="фон темнее"')) fail('нет подсказок для чата');
+  const set = run('«Стиль» с тонкой настройкой', { ...DEF, tune: good }, ui({ sctab: 'sty' }), {},
+    (html) => html.includes('data-tunedel="bg"') ? null : 'токен без кнопки «убрать»');
+  if (!set.includes('data-axreset="tune"')) fail('нет сброса тонкой настройки');
+  if (!set.includes('300px')) fail('значение токена не показано');
+  /* Строка «Своя тема» считает и оси, и токены */
+  const own = run('строка «Своя тема»', { ...DEF, tune: good, font: 'inter' }, ui({ sctab: 'sty' }), {},
+    (html) => html.includes('Своя тема') ? null : 'нет строки «Своя тема»');
+  if (!own.includes('1 из 5') || !own.includes('токенов 4')) fail('счётчик своей темы врёт');
+}
+
+/* 8c. Чат про оформление: цель + действие меняют тему, остальное — оси */
+{
+  const sty = (text, S = { ...DEF }, dark = false) => answer(text, S, dark);
+  const tuneOf = (text, S, dark) => (sty(text, S, dark).apply || {}).tune;
+  if (!tuneOf('фон темнее')) fail('«фон темнее» не поменял тему');
+  if (tuneOf('скругления 4') !== 't1_rk-25') fail('«скругления 4» считается неверно');
+  if (tuneOf('крупнее текст') !== 't1_fsk-110') fail('«крупнее текст» не поменял масштаб');
+  if (tuneOf('сайдбар 300') !== 't1_sb-300') fail('«сайдбар 300» не поменял ширину');
+  if (tuneOf('карточки белые') !== 't1_sf-ffffff') fail('цвет по имени не разобран');
+  if (tuneOf('фон #102030') !== 't1_bg-102030_c1-fafafa') fail('нечитаемый текст не подобран');
+  if (tuneOf('фон теплее', { ...DEF }, true)?.slice(0, 7) !== 't1_dbg-') fail('в тёмной теме патч ушёл не в ту тему');
+  /* «Светлее» в тёмной теме считается от тёмного фона, а не от светлого:
+     иначе первая же правка выбрасывает тёмную тему в белый */
+  {
+    const T = await vite.ssrLoadModule('/src/theme.ts');
+    const want = 't1_bg-ffffff_dbg-' + T.lighten(T.BASE_DARK.bg, 0.18);
+    const from = { ...DEF, tune: 't1_bg-ffffff' };
+    if (tuneOf('фон светлее', from, true) !== want) fail('в тёмной теме считаем от чужой базы');
+  }
+  if (tuneOf('верни оформление', { ...DEF, tune: 't1_rk-25' }) !== '') fail('«верни оформление» не сбросило тему');
+  /* Продуктовые фразы оформление не трогают — иначе чат чинил бы то,
+     о чём не просили */
+  for (const q of ['авария на парке', 'пусто в таблицах', 'тёмная тема', 'шрифт Onest',
+    'наблюдатель', 'открой выплаты', 'окно экспорта', 'крупный клиент']) {
+    const a = answer(q, { ...DEF }, false);
+    if (a.apply && 'tune' in a.apply) fail(`«${q}» полезла в оформление`);
+    if (!a.apply && !a.go && !a.modal) fail(`«${q}» перестала работать`);
+  }
 }
 
 /* 9. Обучение: каждый шаг рисуется и ведёт на следующий */

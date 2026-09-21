@@ -374,10 +374,34 @@ run('открыта модалка', { ...DEF }, ui(), { modal: 'export' }, (htm
   if (made?.title !== 'Бонусы') fail(`«новый раздел Бонусы» дал ${made && made.title}`);
   if (!dr('сделай экран про рефералов')) fail('«сделай экран» не собрал черновик');
   const added = dr('добавь вкладки', made);
-  if (!added || added.blocks.filter((b) => b.t === 'tabs').length !== 1) fail('вкладки не добавились');
+  if (!added || added.blocks.length !== made.blocks.length + 1) fail('вкладки не добавились');
   const cut = dr('убери график', made);
   if (!cut || cut.blocks.some((b) => b.t === 'chart')) fail('график не убрался');
   if (answer('добавь вкладки', { ...DEF }, false, null).draft) fail('правка без черновика собрала раздел');
+  /* Жалоба из отзыва: «без общего графика, а много разных диограмм» молча
+     переключала постороннюю ось вместо правки черновика */
+  const many = dr('Без общего графика а много разных диограмм', dr('новый раздел Сводка'));
+  if (!many) fail('«без графика, а много диаграмм» не поправила черновик');
+  if (many.blocks.filter((b) => b.t === 'chart').length < 3) fail('«много диаграмм» дало меньше трёх');
+  const titles = new Set(many.blocks.filter((b) => b.t === 'chart').map((b) => b.title));
+  if (titles.size < 3) fail('графики называются одинаково — их не отличить');
+  /* Фраза про черновик, которую не разобрали, не должна трогать оси */
+  for (const q of ['сделай красиво', 'убери лишнее отсюда', 'добавь сюда ещё чего-нибудь']) {
+    const lost = answer(q, { ...DEF }, false, made);
+    if (lost.apply || lost.go || lost.modal) fail(`«${q}» при открытом черновике дёрнула посторонние оси`);
+    if (!lost.say.includes('поменять в черновике')) fail(`«${q}» ответила не про черновик`);
+  }
+  /* Замена и переименование */
+  const swapped = dr('вместо таблицы кнопки', made);
+  if (!swapped || swapped.blocks.some((b) => b.t === 'table') || !swapped.blocks.some((b) => b.t === 'actions'))
+    fail('«вместо таблицы кнопки» не сработало');
+  const renamed = dr('переименуй в Сводка', made);
+  if (renamed?.title !== 'Сводка') fail('переименование не сработало');
+  /* Заготовки по теме: знакомое название даёт осмысленный набор блоков */
+  const bonus = dr('новый раздел Бонусы');
+  if (!bonus.blocks.some((b) => b.t === 'actions')) fail('шаблон «бонусы» без кнопок');
+  const analytics = dr('новый раздел Аналитика');
+  if (analytics.blocks.filter((b) => b.t === 'chart').length < 2) fail('шаблон «аналитика» без графиков');
   /* Навигация не должна превращаться в генерацию */
   for (const q of ['открой выплаты', 'открой раздел воркеры', 'авария на парке', 'фон темнее']) {
     if (answer(q, { ...DEF }, false, null).draft) fail(`«${q}» собрала черновик`);

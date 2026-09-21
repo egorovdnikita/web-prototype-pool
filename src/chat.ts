@@ -195,17 +195,83 @@ const MAKE = /^(новый|новая|новое|создай|сделай|до�
 /* «Вкладки» здесь нет намеренно: это блок внутри черновика, а не раздел —
    иначе «добавь вкладки» собирало бы новый раздел с названием «и». */
 const WHAT = /^(раздел|экран|страниц)/
-/* Блоки, которые можно добросить в открытый черновик словом */
-const ADD: [RegExp, Block][] = [
-  [/^(таблиц|список)/, { t: 'table', cols: ['Дата', 'Событие', 'Значение'], rows: [] }],
-  [/^(график|диаграмм|чарт)/, { t: 'chart', title: 'Динамика' }],
-  [/^(статистик|показател|цифр|метрик)/, { t: 'stats', items: [
-    { label: 'Всего', value: '—' }, { label: 'За 24 ч', value: '—' },
-    { label: 'В среднем', value: '—' }, { label: 'Изменение', value: '—' }] }],
-  [/^(пуст|заглушк)/, { t: 'empty', title: 'Пока пусто', text: 'Данные появятся, когда что-то произойдёт' }],
-  [/^(кнопк|действи)/, { t: 'actions', items: ['Основное действие', 'Второе'] }],
-  [/^(вкладк|переключател|сегмент)/, { t: 'tabs', items: ['Все', 'Активные', 'Завершённые'] }],
+/* Блоки, которые можно назвать словом. Сравниваем по основе и допускаем
+   одну опечатку: «диограмм» — это всё-таки диаграмма. */
+const KINDS: { stems: string[]; t: Block['t']; name: string; make: (n: number) => Block }[] = [
+  { stems: ['таблиц', 'списк', 'строк'], t: 'table', name: 'Таблица',
+    make: () => ({ t: 'table', cols: ['Дата', 'Событие', 'Значение'], rows: [] }) },
+  { stems: ['график', 'диагр', 'чарт'], t: 'chart', name: 'График',
+    make: (n) => ({ t: 'chart', title: CHART_TITLES[n % CHART_TITLES.length] }) },
+  { stems: ['статис', 'показа', 'цифр', 'метрик', 'счетчи', 'счётчи'], t: 'stats', name: 'Показатели',
+    make: () => ({ t: 'stats', items: [
+      { label: 'Всего', value: '—' }, { label: 'За 24 ч', value: '—' },
+      { label: 'В среднем', value: '—' }, { label: 'Изменение', value: '—' }] }) },
+  { stems: ['пуст', 'заглуш'], t: 'empty', name: 'Пустое состояние',
+    make: () => ({ t: 'empty', title: 'Пока пусто', text: 'Данные появятся, когда что-то произойдёт' }) },
+  { stems: ['кнопк', 'действ'], t: 'actions', name: 'Кнопки',
+    make: () => ({ t: 'actions', items: ['Основное действие', 'Второе'] }) },
+  { stems: ['вкладк', 'переключ', 'сегмен'], t: 'tabs', name: 'Вкладки',
+    make: () => ({ t: 'tabs', items: ['Все', 'Активные', 'Завершённые'] }) },
+  { stems: ['текст', 'описан', 'абзац'], t: 'text', name: 'Текст',
+    make: () => ({ t: 'text', text: 'Короткое пояснение к разделу.' }) },
 ]
+/* Несколько графиков подряд должны хотя бы называться по-разному:
+   компонент в дизайн-системе один, и различает их только подпись. */
+const CHART_TITLES = ['Динамика', 'Распределение', 'Сравнение', 'По дням', 'По монетам', 'По воркерам']
+
+/* Одна опечатка не должна ронять разбор. Расстояние больше единицы —
+   это уже другое слово, и угадывать мы не беремся. */
+function near(a: string, b: string) {
+  if (a === b) return true
+  if (Math.abs(a.length - b.length) > 1) return false
+  let i = 0, j = 0, diff = 0
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i++; j++; continue }
+    if (++diff > 1) return false
+    if (a.length > b.length) i++
+    else if (a.length < b.length) j++
+    else { i++; j++ }
+  }
+  return diff + (a.length - i) + (b.length - j) <= 1
+}
+const kindOf = (w: string) => KINDS.find((k) => k.stems.some((s) =>
+  w.startsWith(s) || near(w.slice(0, s.length), s)))
+
+/* «Много диаграмм» — это не одна диаграмма */
+const COUNT: Record<string, number> = {
+  много: 3, несколько: 3, разные: 3, разных: 3, пара: 2, пары: 2, две: 2, два: 2,
+  три: 3, четыре: 4, пять: 5,
+}
+const DEL_W = /^(убер|удал|выкин|сотри|без|вместо|замен|лишн)/
+const ADD_W = /^(добав|встав|еще|ещё|нужн|хочу|дай|сделай|поставь|прибав)/
+const RENAME = /^(переимен|назов|назван)/
+
+/** Что делать с черновиком: разбираем фразу слева направо. «Без общего
+    графика, а много разных диаграмм» — это сначала убрать, потом добавить
+    три: слово-действие держится до следующего, а количество его меняет. */
+function planEdits(all: string[]) {
+  const plan: { kind: typeof KINDS[number]; del: boolean; n: number }[] = []
+  let del = false, n = 1, used = false
+  for (const w of all) {
+    if (DEL_W.test(w)) { del = true; n = 1; used = false; continue }
+    if (ADD_W.test(w)) { del = false; n = 1; used = false; continue }
+    if (COUNT[w]) {
+      n = COUNT[w]
+      /* «Убери два графика» — количество к удалению; «без графика, а много
+         диаграмм» — удаление уже случилось, значит речь о добавлении */
+      if (del && used) { del = false; used = false }
+      continue
+    }
+    if (/^\d{1,2}$/.test(w)) { n = Math.min(+w, CAPS.blocks); continue }
+    const kind = kindOf(w)
+    if (!kind) continue
+    plan.push({ kind, del, n })
+    used = true
+    /* После удаления следующий блок в той же фразе — почти всегда замена */
+    if (del) { del = false; n = 1 }
+  }
+  return plan
+}
 
 /** Разбор запросов про новый раздел и правку открытого черновика.
     null — речь не о нём. */
@@ -213,51 +279,143 @@ export function draftAnswer(q: string[], all: string[], raw: string, cur: Draft 
   /* Слова намерения ищем в исходном наборе, а не в очищенном: «сделай»
      и «покажи» лежат в STOP, иначе они перетягивали бы поиск по осям —
      но именно они отличают «сделай раздел» от «открой раздел». */
-  /* Правку открытого черновика разбираем первой: «добавь таблицу» — это
-     про него, а не заявка на новый раздел с названием «таблицу». */
-  const add = all.some((w) => /^(добав|встав|прибав)/.test(w))
-  const del = all.some((w) => /^(убер|удал|выкин|сотри)/.test(w))
-  const block = (add || del) ? ADD.find(([re]) => q.some((w) => re.test(w))) : undefined
-  if (cur && block) return editDraft(cur, block[1], del)
-
   const wants = all.some((w) => MAKE.test(w)) && all.some((w) => WHAT.test(w))
+
+  /* Открыт черновик — правки разбираем первыми: «добавь таблицу» про него,
+     а не заявка на новый раздел с названием «таблицу». */
+  if (cur && !wants) {
+    if (all.some((w) => RENAME.test(w))) {
+      const m = raw.match(/(?:переименуй|назови|название)\s*(?:раздел\w*|черновик\w*|его)?\s*(?:в|на)?\s*[«"']?([^»"'.!?]+)/i)
+      const name = (m?.[1] || '').trim().slice(0, CAPS.title)
+      if (name.length < 2) return { say: 'Как назвать? Скажите: «переименуй в Аналитика».' }
+      const title = name[0].toUpperCase() + name.slice(1)
+      return { say: `Теперь раздел называется «${title}».`, draft: vetDraft({ ...cur, title })! }
+    }
+    const plan = planEdits(all)
+    if (plan.length) return editDraft(cur, plan)
+    /* Черновик открыт, а фраза похожа на правку — тогда честное «не понял»
+       вместо молчаливого переключения посторонней оси. */
+    if (all.some((w) => DEL_W.test(w) || ADD_W.test(w) || /^(черновик|раздел|блок)/.test(w))) {
+      return {
+        say: 'Не понял, что поменять в черновике. Блоки, которые я знаю: показатели, '
+          + 'таблица, график, вкладки, кнопки, пустое состояние, текст.',
+        chips: ['добавь таблицу', 'убери график', 'переименуй в Аналитика'],
+      }
+    }
+  }
+
   if (wants) {
     /* Название берём из исходной строки: регистр и кавычки важны, а words()
-       их уже потерял. «Сделай раздел про рефералов» → «Рефералы по дням»
-       мы не придумываем — берём то, что сказали. */
+       их уже потерял. Придумывать за пользователя не будем — берём то,
+       что сказали, вплоть до падежа. */
     const m = raw.match(/(?:раздел|экран|страниц\w*)\w*\s*(?:про|для|о|об|по)?\s*[«"']?([^»"'.!?]+)/i)
     const name = (m?.[1] || '').trim().replace(/\s+/g, ' ').slice(0, CAPS.title)
     if (name.length < 2) {
       return { say: 'Как назвать раздел? Скажите, например: «новый раздел Бонусы».', chips: ['новый раздел Бонусы'] }
     }
     const title = name[0].toUpperCase() + name.slice(1)
+    const made = topicDraft(title)
     return {
-      say: `Собрал черновик «${title}» из блоков дизайн-системы: показатели, график и таблица. `
-        + 'Это не раздел продукта — он не сверялся с макетами и живёт в вашей ссылке. '
-        + 'Дальше скажите, что добавить или убрать.',
-      draft: skeletonDraft(title),
-      chips: ['добавь вкладки', 'добавь пустое состояние', 'убери график'],
+      say: `Собрал черновик «${title}»: ${made.blocks.map((b) => BLOCK_NAME[b.t].toLowerCase()).join(', ')}. `
+        + 'Содержимое — заготовка по названию: без модели придумывать цифры мне неоткуда. '
+        + 'Дальше скажите, что добавить, убрать или заменить.',
+      draft: made,
+      chips: ['добавь вкладки', 'убери график', 'вместо таблицы кнопки'],
     }
   }
   return null
 }
 
-/** Добавить или убрать блок в открытом черновике */
-function editDraft(cur: Draft, block: Block, del: boolean): ChatAnswer {
-  const name = BLOCK_NAME[block.t]
-  if (del) {
-    const blocks = cur.blocks.filter((b) => b.t !== block.t)
-    if (blocks.length === cur.blocks.length) return { say: `В черновике и нет блока «${name}».` }
-    if (!blocks.length) return { say: 'Это последний блок — без него от раздела ничего не останется.' }
-    return { say: `Убрал «${name}».`, draft: vetDraft({ ...cur, blocks })!, chips: ['добавь таблицу', 'добавь график'] }
+/** Применяем разобранный план: удаляем с конца, добавляем в конец */
+function editDraft(cur: Draft, plan: ReturnType<typeof planEdits>): ChatAnswer {
+  const blocks = [...cur.blocks]
+  const said: string[] = []
+  let full = false
+  for (const { kind, del, n } of plan) {
+    if (del) {
+      let left = n, hit = 0
+      for (let i = blocks.length - 1; i >= 0 && left > 0; i--) {
+        if (blocks[i].t === kind.t) { blocks.splice(i, 1); left--; hit++ }
+      }
+      said.push(hit
+        ? `убрал ${hit > 1 ? hit + ' × ' : ''}«${kind.name.toLowerCase()}»`
+        : `«${kind.name.toLowerCase()}» в черновике и не было`)
+      continue
+    }
+    let made = 0
+    for (let i = 0; i < n; i++) {
+      if (blocks.length >= CAPS.blocks) { full = true; break }
+      blocks.push(kind.make(blocks.filter((b) => b.t === kind.t).length))
+      made++
+    }
+    if (made) said.push(`добавил ${made > 1 ? made + ' × ' : ''}«${kind.name.toLowerCase()}»`)
   }
-  if (cur.blocks.length >= CAPS.blocks) {
-    return { say: `В черновике уже ${CAPS.blocks} блоков — больше не влезет в ссылку. Уберите что-нибудь.` }
+  if (!blocks.length) return { say: 'Так от раздела ничего не останется — оставил как было.' }
+  /* Ничего не вышло — говорим об этом прямо, а не пустой репликой с точкой */
+  if (!said.length) {
+    return { say: full
+      ? `В черновике уже ${CAPS.blocks} блоков — больше в ссылку не влезает. Уберите что-нибудь.`
+      : 'Ничего не поменял: не нашёл, к чему это отнести.' }
   }
-  const next = vetDraft({ ...cur, blocks: [...cur.blocks, block] })
-  return next
-    ? { say: `Добавил «${name}» в конец.`, draft: next, chips: ['добавь вкладки', 'убери таблицу'] }
-    : { say: 'Этот блок в черновик уже не влезает — ссылка станет слишком длинной.' }
+  const next = vetDraft({ ...cur, blocks })
+  if (!next) return { say: 'Такой черновик уже не влезает в ссылку — уберите что-нибудь.' }
+  /* vetDraft мог обрезать хвост под длину ссылки — говорим об этом честно */
+  const cut = blocks.length - next.blocks.length
+  return {
+    say: said.join(', ').replace(/^./, (c) => c.toUpperCase()) + '.'
+      + (full ? ` Больше ${CAPS.blocks} блоков в ссылку не влезает.` : '')
+      + (cut ? ` Последн${cut > 1 ? 'ие ' + cut + ' блока' : 'ий блок'} не влез в ссылку — отбросил.` : ''),
+    draft: next,
+    chips: ['добавь вкладки', 'убери график', 'переименуй в Аналитика'],
+  }
+}
+
+/* Заготовки по теме названия. Придумать содержимое без модели неоткуда,
+   но набор блоков и подписи для знакомых тем предсказать можно — это
+   честный шаблон, а не выдумка: цифры остаются прочерками. */
+const TOPICS: [RegExp, () => Block[]][] = [
+  [/аналит|статис|метрик|дашборд/, () => [
+    { t: 'stats', items: [
+      { label: 'Всего за период', value: '—' }, { label: 'За 24 ч', value: '—' },
+      { label: 'Среднее', value: '—' }, { label: 'Изменение', value: '—' }] },
+    { t: 'chart', title: 'Динамика' },
+    { t: 'chart', title: 'Распределение' },
+    { t: 'table', cols: ['Дата', 'Показатель', 'Значение'], rows: [] },
+  ]],
+  [/бонус|акци|промо/, () => [
+    { t: 'stats', items: [
+      { label: 'Активных бонусов', value: '—' }, { label: 'Начислено', value: '—' },
+      { label: 'Использовано', value: '—' }] },
+    { t: 'tabs', items: ['Активные', 'История'] },
+    { t: 'table', cols: ['Дата', 'Бонус', 'Статус', 'Сумма'], rows: [] },
+    { t: 'actions', items: ['Начислить бонус'] },
+  ]],
+  [/реферал|партн/, () => [
+    { t: 'stats', items: [
+      { label: 'Рефералов', value: '—' }, { label: 'Доход с рефералов', value: '—' },
+      { label: 'Уровень', value: '—' }] },
+    { t: 'chart', title: 'Доход по дням' },
+    { t: 'table', cols: ['Дата', 'Реферал', 'Хэшрейт', 'Начислено'], rows: [] },
+  ]],
+  [/отчет|отчёт|выгруз|документ/, () => [
+    { t: 'tabs', items: ['Готовые', 'В работе'] },
+    { t: 'table', cols: ['Дата', 'Отчёт', 'Период', 'Статус'], rows: [] },
+    { t: 'actions', items: ['Сформировать отчёт', 'Скачать'] },
+  ]],
+  [/выплат|платеж|платёж|финанс/, () => [
+    { t: 'stats', items: [
+      { label: 'К выплате', value: '—' }, { label: 'Выплачено за месяц', value: '—' },
+      { label: 'Средняя выплата', value: '—' }] },
+    { t: 'chart', title: 'Выплаты по дням' },
+    { t: 'table', cols: ['Дата', 'Сумма', 'Кошелёк', 'Статус'], rows: [] },
+  ]],
+]
+
+/** Черновик по названию: знакомая тема — свой набор блоков, иначе каркас */
+export function topicDraft(title: string): Draft {
+  const low = title.toLowerCase()
+  const hit = TOPICS.find(([re]) => re.test(low))
+  return vetDraft({ title, blocks: hit ? hit[1]() : skeletonDraft(title).blocks })!
 }
 
 const BLOCK_NAME: Record<Block['t'], string> = {

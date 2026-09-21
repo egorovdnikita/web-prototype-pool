@@ -11,6 +11,7 @@ const TABS: [NonNullable<Ui['sctab']>, string][] = [
 ]
 /* Оси оформления живут на своей вкладке — в списке состояний продукта им не место */
 const STY = (k: string) => AX_STYLE.has(k)
+const STY_N = AX_STYLE.size
 /* Ширины панели кнопками. Первая — значение по умолчанию из freshUi: иначе
    ни одна кнопка не подсвечена, пока её не нажали. Между ними ширина тянется
    за край мышью, поэтому кнопка может быть не подсвечена ни одна. */
@@ -176,6 +177,10 @@ export function ScenarioPanel() {
     <>
       <button className="sct" data-panel>
         ⚙ Сценарии{changed.length > 0 && <span className="bdg">{changed.length}</span>}
+        {/* Провенанс: по кнопке видно, что вид на экране — своя тема,
+            а не дизайн-система. Панель закрыта почти всегда, а скриншот
+            уезжает в задачу именно в этот момент. */}
+        {changedSty.length > 0 && <span className="sctag" title="Оформление изменено">своя тема</span>}
       </button>
       {/* Затемнение под панелью: клик по нему закрывает. При открытой модалке
           не рисуем — у неё своя маска, и вторая только гасила бы окно. */}
@@ -216,6 +221,16 @@ export function ScenarioPanel() {
           ))}
           <button className="scx" data-panel aria-label="Закрыть">×</button>
         </div>
+
+        {/* Провенанс: своя тема — это не дизайн-система. Строкой под шапкой,
+            а не бейджем в ней: в шапке при узкой панели не осталось места. */}
+        {changedSty.length > 0 && (
+          <div className="scown">
+            <b>Своя тема</b>
+            <span>оформление изменено: {changedSty.length} из {STY_N}</span>
+            <button data-styreset>Вернуть</button>
+          </div>
+        )}
 
         <div className="sctabs">
           {TABS.map(([id, t]) => (

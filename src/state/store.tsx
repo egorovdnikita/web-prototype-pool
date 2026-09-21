@@ -91,6 +91,16 @@ export function okValue(k: keyof Scenario, v: string) {
   return ax.free === 'color' && /^[0-9a-f]{6}$/i.test(v)
 }
 
+/** В ссылку пишем только отличия от умолчаний: полный набор — это 1106
+    символов даже на нетронутом прототипе, а отличия обычно укладываются
+    в несколько десятков. Старые ссылки с полным набором читаются как есть:
+    loadScenario начинает с DEF и просто накладывает то, что нашлось. */
+export function hashOf(s: Scenario) {
+  const q = new URLSearchParams()
+  for (const k of Object.keys(DEF) as (keyof Scenario)[]) if (s[k] !== DEF[k]) q.set(k, s[k])
+  return q.toString()
+}
+
 /** Сценарий из хэша ссылки, иначе из localStorage, иначе дефолт. */
 function loadScenario(): Scenario {
   let s = location.hash.slice(1)
@@ -204,9 +214,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   /* Сценарий живёт в хэше — ссылку можно отправить команде. */
   useEffect(() => {
-    const q = new URLSearchParams({ ...S.current })
-    history.replaceState(null, '', location.pathname + '#' + q)
-    try { localStorage.setItem('pm', q.toString()) } catch { /* приватный режим */ }
+    const q = hashOf(S.current)
+    history.replaceState(null, '', location.pathname + (q ? '#' + q : ''))
+    try { localStorage.setItem('pm', q) } catch { /* приватный режим */ }
   })
 
   /* Свёрнутый сайдбар — тоже ось: кнопка в сайдбаре её переключает */

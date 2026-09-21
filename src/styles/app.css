@@ -2216,7 +2216,19 @@ html{scrollbar-gutter:stable}
 .schead{display:flex;align-items:center;gap:4px;padding:14px 16px 10px;border-bottom:1px solid var(--border)}
 .schead h3{flex:1}
 .scbadge{font-size:10px;line-height:16px;font-weight:700;color:var(--accent);
-  background:var(--accent-ghost);border-radius:var(--r-f);padding:0 8px;margin-right:4px}
+  background:var(--accent-ghost);border-radius:var(--r-f);padding:0 8px;margin-right:4px;
+  flex:0 0 auto;white-space:nowrap}
+/* Заголовок ужимается первым: бейджи и кнопки в шапке важнее полного слова */
+.schead h3{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Признак своей темы: видно и в шапке панели, и на кнопке при закрытой панели */
+.scown{display:flex;align-items:center;gap:6px;padding:8px 16px;
+  border-bottom:1px solid var(--border);background:var(--accent-ghost);
+  font-size:11px;line-height:16px;color:var(--c2)}
+.scown b{color:var(--accent);font-weight:700;flex:0 0 auto}
+.scown span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.scown button{flex:0 0 auto;color:var(--accent);font-weight:600;text-decoration:underline}
+.sct .sctag{font-size:10px;line-height:16px;font-weight:700;padding:0 8px;
+  border-radius:var(--r-f);background:var(--accent);color:#fff}
 .scx{display:grid;place-items:center;color:var(--c3);font-size:16px;width:26px;height:26px;
   border-radius:var(--r-f);flex:0 0 auto}
 .scx:last-child{font-size:22px}

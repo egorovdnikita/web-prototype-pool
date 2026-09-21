@@ -2237,6 +2237,8 @@ html{scrollbar-gutter:stable}
 .scown b{color:var(--accent);font-weight:700;flex:0 0 auto}
 .scown span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .scown button{flex:0 0 auto;color:var(--accent);font-weight:600;text-decoration:underline}
+/* Пока ждём ответа прокси — реплика с многоточием вместо ответа */
+.scmsg.wait{opacity:.6;font-style:italic}
 /* Тонкая настройка: что набрано фразами, с крестиком на каждый токен */
 .sctune{display:flex;flex-wrap:wrap;gap:6px;padding:0 16px 8px}
 .sctune span{display:inline-flex;align-items:center;gap:6px;padding:4px 6px 4px 10px;

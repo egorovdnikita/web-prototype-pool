@@ -3,6 +3,7 @@ import { CHAT_HINTS } from '@/chat'
 import { AXES, AX_OWN, AX_STYLE, AXCAT, PRESETS, DEF, SCREEN_NAMES, TITLES, MODALS, ICON_PACKS, iconSample, FONTS } from '@/legacy/prototype'
 import { useApp } from '@/state/store'
 import { parseTune, tuneList, tuneWarnings } from '@/theme'
+import { aiUrl } from '@/ai'
 import type { Scenario, Ui } from '@/state/types'
 
 type Key = keyof Scenario
@@ -308,17 +309,23 @@ export function ScenarioPanel() {
             <p className="scdesc">
               Чат включает состояния словами: «авария на парке», «тёмная тема», «открой выплаты».
               Оформление тоже меняет: «фон темнее», «скругления 4», «крупнее текст».
-              Разбор запроса пока свой, без модели — прототип раздаётся статикой, ключу от API
-              там негде лежать.
+              {aiUrl()
+                ? ' Запрос уходит модели через прокси — ключ лежит там, а не на странице.'
+                  + ' Что бы модель ни ответила, применяется только то, что проходит проверку:'
+                  + ' известные оси, токены из белого списка, существующие экраны и окна.'
+                  + ' Оформление — лишь когда о нём попросили.'
+                : ' Разбор запроса пока свой, без модели: прокси не настроен'
+                  + ' (VITE_AI_URL), а ключу от API на статической странице лежать негде.'}
             </p>
             <div className="scmsgs">
               {(U.chat || []).map((m, i) => (
                 <div className={`scmsg ${m.role}`} key={i}>{m.text}</div>
               ))}
-              {!(U.chat || []).length && (
+              {!(U.chat || []).length && !U.chatwait && (
                 <div className="scmsg bot">Скажите, что показать. Например: «крупный клиент»,
                   «пусто в таблицах», «наблюдатель», «шрифт Onest».</div>
               )}
+              {U.chatwait && <div className="scmsg bot wait">Думаю…</div>}
             </div>
             <div className="scbar">
               {((U.chat || []).length ? U.chatchips || [] : CHAT_HINTS).map((c) => (
@@ -329,8 +336,8 @@ export function ScenarioPanel() {
               )}
             </div>
             <div className="scsave">
-              <input id="scchat" placeholder="Что показать?" />
-              <button data-chatsend>Отправить</button>
+              <input id="scchat" placeholder="Что показать?" disabled={!!U.chatwait} />
+              <button data-chatsend disabled={!!U.chatwait}>Отправить</button>
             </div>
           </div>
         )}

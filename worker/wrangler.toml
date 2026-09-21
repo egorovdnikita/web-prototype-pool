@@ -1,0 +1,20 @@
+name = "promminer-chat"
+main = "chat.js"
+compatibility_date = "2025-09-01"
+
+# Счётчики лимита. Создать: wrangler kv namespace create RL
+# и подставить сюда выданный id.
+# [[kv_namespaces]]
+# binding = "RL"
+# id = "…"
+
+[vars]
+# Откуда принимаем запросы. Пусто — от всех: так можно только отлаживать.
+ALLOW_ORIGIN = "https://egorovdnikita.github.io"
+# Сколько запросов с одного адреса в час и сколько всего в сутки
+LIMIT_IP = "30"
+LIMIT_DAY = "500"
+
+# Секреты задаются не здесь, а командой wrangler secret put:
+#   ANTHROPIC_API_KEY — ключ от API
+#   PM_KEY            — щеколда, та же строка, что в VITE_AI_TOKEN

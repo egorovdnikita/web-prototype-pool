@@ -8,7 +8,8 @@
     "audit": "node scripts/audit.mjs",
     "sweep": "node scripts/sweep.mjs",
     "panel": "node scripts/panel.mjs",
-    "gate": "node scripts/gate-password.mjs"
+    "gate": "node scripts/gate-password.mjs",
+    "catalog": "node scripts/catalog.mjs"
   },
   "type": "module",
   "private": true,

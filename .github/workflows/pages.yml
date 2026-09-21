@@ -31,6 +31,11 @@ jobs:
       - run: npm run build
         env:
           BASE_PATH: /promminer-pool/
+          # Адрес прокси для чата и щеколда к нему. Пока переменных нет,
+          # сборка выходит без модели — чат разбирает запросы локально.
+          # Заводятся в Settings → Secrets and variables → Actions.
+          VITE_AI_URL: ${{ vars.AI_URL }}
+          VITE_AI_TOKEN: ${{ secrets.AI_TOKEN }}
       - run: cp dist/index.html dist/404.html
       # enablement включает Pages в репозитории сам — иначе первый запуск
       # падает на «Get Pages site failed», пока настройку не щёлкнут руками

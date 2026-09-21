@@ -27,7 +27,7 @@ export interface ChatAnswer {
 }
 
 /* Слова запроса: регистр и ё не важны, знаки препинания выкидываем */
-const words = (s: string) =>
+export const words = (s: string) =>
   s.toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9+./ -]/g, ' ').split(/\s+/).filter(Boolean)
 
 /* Отбрасываем служебные слова, иначе «покажи» и «мне» перетягивают счёт */
@@ -178,6 +178,13 @@ function colorOf(w: string): string | null {
   const base = COLOR_STEM[cstem(name)]
   if (!base) return null
   return k === 0 ? base : k < 0 ? darken(base, 0.35) : lighten(base, 0.45)
+}
+
+/** Просили ли вообще про внешний вид. Нужно не только разбору, но и
+    политике для модели: без явной просьбы её патч оформления не берём. */
+export function asksStyle(q: string[]) {
+  return q.some((w) => TARGETS.some(([re]) => re.test(w))
+    || /^(оформлен|дизайн|стил|тем[ауые]|темой|цвет|шрифт|внешн)/.test(w))
 }
 
 /** Разбор фразы про оформление. null — речь не о нём. */

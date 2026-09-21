@@ -8,6 +8,8 @@ import { AXES, DEF, MODELS, PRESETS, GROUP_OF, M, allowed, groups, tagsOf, apply
 import type { AppSnapshot, Scenario, Ui } from './types'
 import { TOUR, markTourSeen, tourSeen } from '@/tour'
 import { answer } from '@/chat'
+import type { ChatAnswer } from '@/chat'
+import { ask, aiUrl } from '@/ai'
 
 const HOME = 'home'
 /* База сайта: «/» при раздаче с корня, «/promminer-pool/» на GitHub Pages.
@@ -891,16 +893,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
       /* Подсказку можно нажать и со вкладки «Стиль» — тогда переезжаем
          в чат, иначе ответ уходит в невидимую переписку */
       u.sctab = 'chat'
-      const a = answer(text, S.current, eff === 'dark')
-      u.chat = [...(u.chat || []), { role: 'you', text }, { role: 'bot', text: a.say }]
-      if (a.apply) { pushHist(); Object.assign(S.current, a.apply) }
-      if (a.modal) modal.current = a.modal
-      /* Подсказки под ответом кладём отдельным сообщением: разметка читает
-         их из последнего ответа, поэтому держим их рядом с ним */
-      u.chatchips = a.chips || []
-      if (a.go) { go(a.go); return bump() }
-      guardRoute()
-      return bump()
+      u.chat = [...(u.chat || []), { role: 'you', text }]
+      const dark = eff === 'dark'
+      /* Ответ применяем одинаково, откуда бы он ни пришёл — от модели
+         за прокси или от локального разбора */
+      const take = (a: ChatAnswer, note = '') => {
+        const uu = U.current
+        uu.chatwait = false
+        uu.chat = [...(uu.chat || []), { role: 'bot', text: a.say + note }]
+        if (a.apply) { pushHist(); Object.assign(S.current, a.apply) }
+        if (a.modal) modal.current = a.modal
+        /* Подсказки под ответом кладём отдельным сообщением: разметка читает
+           их из последнего ответа, поэтому держим их рядом с ним */
+        uu.chatchips = a.chips || []
+        if (a.go) { go(a.go); return bump() }
+        guardRoute()
+        bump()
+      }
+      /* Прокси есть — спрашиваем модель, нет — разбираем сами. Если модель
+         не ответила или ответила не тем, локальный разбор остаётся
+         запасным путём: чат не должен молчать из-за чужого сервера. */
+      if (aiUrl()) {
+        u.chatwait = true
+        const asked = { ...S.current }
+        void ask(text, asked, dark).then((a) => {
+          if (a) return take(a)
+          take(answer(text, S.current, dark), ' (прокси не ответил — разобрал сам)')
+        })
+        return bump()
+      }
+      take(answer(text, S.current, dark))
+      return
     }
     if (at('[data-chatclear]')) { u.chat = []; u.chatchips = []; return bump() }
     /* Один токен из тонкой настройки: остальные остаются как были */

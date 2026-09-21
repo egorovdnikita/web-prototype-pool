@@ -142,6 +142,8 @@ export interface Ui {
   chat?: { role: 'you' | 'bot'; text: string }[]
   /** Подсказки под последним ответом чата. */
   chatchips?: string[]
+  /** Ждём ответа прокси: пока ждём, чат показывает «думаю» */
+  chatwait?: boolean
   /** Шаг обучения по панели; null или undefined — обучение не идёт. */
   tour?: number | null
   /** Закреплённые оси — всплывают наверх списка (живут в localStorage). */

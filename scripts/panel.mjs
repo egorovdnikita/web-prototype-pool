@@ -232,6 +232,48 @@ run('открыта модалка', { ...DEF }, ui(), { modal: 'export' }, (htm
   }
 }
 
+/* 8d. Модель за прокси: справочник и проверка её ответа */
+{
+  const { buildCatalog, catalogPath } = await import('./catalog.mjs');
+  const theme = await vite.ssrLoadModule('/src/theme.ts');
+  const fresh = buildCatalog(proto, theme);
+  const onDisk = JSON.parse(fs.readFileSync(catalogPath(P), 'utf8'));
+  if (JSON.stringify(fresh) !== JSON.stringify(onDisk))
+    fail('worker/catalog.json разошёлся с прототипом — соберите заново: npm run catalog');
+
+  const { vetAnswer, dropNote } = await vite.ssrLoadModule('/src/ai.ts');
+  const vet = (raw, styleAsked = true, S = { ...DEF }) => vetAnswer(raw, S, styleAsked);
+  /* Ответ модели — данные, а не команда: берём только то, что проверили */
+  if (vet({ axes: { coin: 'ltc' } }).answer.apply?.coin !== 'ltc') fail('годная ось не применилась');
+  if (vet({ axes: { выдумка: 'да' } }).answer.apply) fail('несуществующая ось применилась');
+  if (vet({ axes: { coin: 'zzz' } }).answer.apply) fail('чужое значение оси применилось');
+  if (vet({ go: 'payouts' }).answer.go !== 'payouts') fail('экран не открылся');
+  if (vet({ go: 'нет-такого' }).answer.go) fail('несуществующий экран открылся');
+  if (vet({ modal: 'нет-такого' }).answer.modal) fail('несуществующее окно открылось');
+  if (vet({ tune: { bg: '#F5F5F5' } }).answer.apply?.tune !== 't1_bg-f5f5f5')
+    fail('патч токенов не разобран');
+  if (vet({ tune: { bg: 'zzz', rk: '25' } }).answer.apply?.tune !== 't1_rk-25')
+    fail('мусорный токен не отброшен');
+  /* Патч кладётся поверх того, что уже набрано, а пустая строка снимает ключ */
+  const withTune = { ...DEF, tune: 't1_bg-f5f5f5_rk-25' };
+  if (vetAnswer({ tune: { rk: '' } }, withTune, true).answer.apply?.tune !== 't1_bg-f5f5f5')
+    fail('пустое значение не сняло токен');
+  /* Главное обещание: без просьбы оформление не трогаем */
+  const sneak = vet({ say: 'Готово', axes: { font: 'inter' }, tune: { bg: '000000' } }, false);
+  if (sneak.answer.apply) fail('модель поменяла оформление, о котором не просили');
+  if (!dropNote(sneak.dropped, false).includes('Оформление не трогал'))
+    fail('про отброшенное оформление не сказали');
+  /* Реплика — текст: длину режем, управляющие символы вычищаем */
+  const long = vet({ say: 'я'.repeat(900) }).answer.say;
+  if (long.length !== 600) fail('длина реплики не ограничена');
+  if (vet({ say: 'а\u0007б' }).answer.say.includes('\u0007')) fail('управляющий символ не вычищен');
+  if (vet({ chips: ['1', '2', '3', '4', '5', '6'] }).answer.chips.length !== 4) fail('подсказок больше четырёх');
+  if (vet({ say: 42, axes: 'нет', tune: 7 }).answer.say !== '') fail('ответ не того вида не отброшен');
+
+  run('чат ждёт ответа прокси', { ...DEF }, ui({ sctab: 'chat', chatwait: true }), {},
+    (html) => html.includes('Думаю') ? null : 'нет строки ожидания');
+}
+
 /* 9. Обучение: каждый шаг рисуется и ведёт на следующий */
 for (let i = 0; i < TOUR.length; i++) {
   const html = renderToStaticMarkup(

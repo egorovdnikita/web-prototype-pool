@@ -2460,3 +2460,13 @@ body.scopen.scleft .mask.sheet{padding:0 0 0 var(--scpad,0px)}
 .tourback:hover{background:var(--ctrl-hover)}
 .tournext{background:var(--accent);color:#fff}
 .tournext:hover{background:var(--accent-h)}
+
+/* ===== Чат в панели сценариев =====
+   Лента сообщений растягивается, поле ввода прижато к низу вкладки. */
+.scchat{display:flex;flex-direction:column;gap:8px;min-height:0}
+.scmsgs{display:flex;flex-direction:column;gap:6px;padding:4px 0}
+.scmsg{max-width:86%;padding:8px 12px;border-radius:16px;
+  font-size:var(--fs-s);line-height:var(--lh-s);font-weight:500;white-space:pre-wrap}
+.scmsg.you{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:6px}
+.scmsg.bot{align-self:flex-start;background:var(--bg);color:var(--c1);border-bottom-left-radius:6px}
+.scchat .scsave{margin:4px 0 0}

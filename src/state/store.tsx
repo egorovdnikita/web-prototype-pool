@@ -6,6 +6,7 @@ import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { AXES, DEF, MODELS, PRESETS, GROUP_OF, M, allowed, groups, tagsOf, applyState, workersList, workersRows, obsOf, subsOf, coinsOf, SUM_ROUTES, AX_STYLE, FONTS, fontStack, fontsHref } from '@/legacy/prototype'
 import type { AppSnapshot, Scenario, Ui } from './types'
 import { TOUR, markTourSeen, tourSeen } from '@/tour'
+import { answer } from '@/chat'
 
 const HOME = 'home'
 /* База сайта: «/» при раздаче с корня, «/promminer-pool/» на GitHub Pages.
@@ -301,6 +302,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (modal.current) { modal.current = null; bump() }
         else if (pop.current) { pop.current = null; bump() }
         else if (panel.current) { panel.current = false; bump() }
+      }
+      /* Enter в поле чата — то же, что кнопка «Отправить»: жмём её,
+         чтобы разбор жил в одном месте, в делегированном обработчике. */
+      if (e.key === 'Enter' && (e.target as HTMLElement)?.id === 'scchat') {
+        (document.querySelector('[data-chatsend]') as HTMLElement | null)?.click()
+        return
       }
       const tag = (e.target as HTMLElement)?.tagName || ''
       const typing = /input|textarea/i.test(tag)
@@ -845,6 +852,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     if (at('[data-mini]')) { S.current.side = S.current.side === 'mini' ? 'full' : 'mini'; return bump() }
     if (at('[data-panel]')) { panel.current = !panel.current; return bump() }
+    /* ==== Чат панели ==== */
+    const said = at('[data-chatsay]')
+    const send = at('[data-chatsend]')
+    if (said || send) {
+      const inp = document.getElementById('scchat') as HTMLInputElement | null
+      const text = said ? said.dataset.chatsay! : (inp?.value || '').trim()
+      if (!text) return
+      if (inp && !said) inp.value = ''
+      const a = answer(text)
+      u.chat = [...(u.chat || []), { role: 'you', text }, { role: 'bot', text: a.say }]
+      if (a.apply) { pushHist(); Object.assign(S.current, a.apply) }
+      if (a.modal) modal.current = a.modal
+      /* Подсказки под ответом кладём отдельным сообщением: разметка читает
+         их из последнего ответа, поэтому держим их рядом с ним */
+      u.chatchips = a.chips || []
+      if (a.go) { go(a.go); return bump() }
+      guardRoute()
+      return bump()
+    }
+    if (at('[data-chatclear]')) { u.chat = []; u.chatchips = []; return bump() }
+
     /* ==== Обучение ==== */
     if (at('[data-tour]')) { u.tour = 0; applyTourStep(0); return bump() }
     const tstep = at('[data-tourgo]')

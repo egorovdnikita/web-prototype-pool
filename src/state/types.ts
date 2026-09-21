@@ -135,7 +135,11 @@ export interface Ui {
   /** Фильтр в панели сценариев. */
   scq?: string
   /** Вкладка панели: оси, наборы или переходы. */
-  sctab?: 'ax' | 'sty' | 'sets' | 'go'
+  sctab?: 'ax' | 'sty' | 'sets' | 'go' | 'chat'
+  /** Переписка с чатом панели; живёт до перезагрузки. */
+  chat?: { role: 'you' | 'bot'; text: string }[]
+  /** Подсказки под последним ответом чата. */
+  chatchips?: string[]
   /** Шаг обучения по панели; null или undefined — обучение не идёт. */
   tour?: number | null
   /** Закреплённые оси — всплывают наверх списка (живут в localStorage). */

@@ -20,6 +20,7 @@ const vite = await createServer({ server: { middlewareMode: true }, appType: 'cu
 const { ScenarioPanel } = await vite.ssrLoadModule('/src/components/ScenarioPanel.tsx');
 const { Tour } = await vite.ssrLoadModule('/src/components/Tour.tsx');
 const { TOUR } = await vite.ssrLoadModule('/src/tour.ts');
+const { answer } = await vite.ssrLoadModule('/src/chat.ts');
 const { AppCtx } = await vite.ssrLoadModule('/src/state/store.tsx');
 const proto = await vite.ssrLoadModule('/src/legacy/prototype.js');
 const { AXES, DEF, AX_STYLE, AX_OWN, PRESETS, TITLES, MODALS } = proto;
@@ -60,7 +61,7 @@ const run = (name, S, U, extra, check) => {
 
 /* 1. Вкладки в состоянии по умолчанию */
 const all = {};
-for (const tab of ['ax', 'sty', 'sets', 'go']) {
+for (const tab of ['ax', 'sty', 'sets', 'go', 'chat']) {
   all[tab] = run(`вкладка ${tab}`, { ...DEF }, ui({ sctab: tab }), {}, (html) =>
     html.includes('Сценарии') ? null : 'нет заголовка');
 }
@@ -126,7 +127,39 @@ run('панель слева', { ...DEF }, ui({ scside: 'left' }), {}, (html) =>
 run('открыта модалка', { ...DEF }, ui(), { modal: 'export' }, (html) =>
   html.includes('scmask on') ? 'маска панели рисуется поверх модалки' : null);
 
-/* 8. Обучение: каждый шаг рисуется и ведёт на следующий */
+/* 8. Чат: разбор запроса включает то, что просили */
+{
+  const ask = (q) => answer(q);
+  const cases = [
+    ['авария на парке', (a) => a.apply && a.apply.health === 'critical'],
+    ['тёмная тема', (a) => a.apply && a.apply.theme === 'dark'],
+    ['пусто в таблицах', (a) => a.apply && a.apply.data === 'empty'],
+    ['открой выплаты', (a) => a.go === 'payouts'],
+    ['наблюдатель', (a) => a.apply && a.apply.role === 'observer'],
+    ['сбрось', (a) => a.apply && a.apply.data === 'normal'],
+    ['помощь', (a) => !a.apply && !a.go && a.chips],
+    ['', (a) => !a.apply && !a.go],
+    ['абырвалг', (a) => !a.apply && !a.go && a.chips],
+  ];
+  for (const [q, ok] of cases) {
+    const a = ask(q);
+    if (!a || typeof a.say !== 'string' || !a.say) fail(`чат молчит на «${q}»`);
+    if (!ok(a)) fail(`чат не понял «${q}»: ${JSON.stringify(a).slice(0, 120)}`);
+  }
+  /* Ответ ссылается только на живые оси, экраны и окна */
+  for (const q of ['авария на парке', 'крупный клиент', 'тёмная тема', 'окно экспорта']) {
+    const a = ask(q);
+    for (const k of Object.keys(a.apply || {})) if (!AXES[k]) fail(`чат вернул ось ${k}, которой нет`);
+    if (a.go && !(a.go in TITLES)) fail(`чат ведёт на экран ${a.go}, которого нет`);
+    if (a.modal && !(a.modal in MODALS)) fail(`чат открывает окно ${a.modal}, которого нет`);
+  }
+  const withChat = run('вкладка «Чат» с перепиской', { ...DEF },
+    ui({ sctab: 'chat', chat: [{ role: 'you', text: 'привет' }, { role: 'bot', text: 'здравствуйте' }] }), {},
+    (html) => html.includes('привет') && html.includes('здравствуйте') ? null : 'переписка не отрисовалась');
+  if (!withChat.includes('data-chatsend')) fail('в чате нет кнопки отправки');
+}
+
+/* 9. Обучение: каждый шаг рисуется и ведёт на следующий */
 for (let i = 0; i < TOUR.length; i++) {
   const html = renderToStaticMarkup(
     h(AppCtx.Provider, { value: ctx({ ...DEF }, ui({ tour: i })) }, h(Tour, null)));
@@ -142,7 +175,7 @@ if (renderToStaticMarkup(h(AppCtx.Provider, { value: ctx({ ...DEF }, ui({ tour: 
   fail('обучение рисуется, когда оно выключено');
 renders++;
 
-/* 9. Каждый data-атрибут разметки кто-то обрабатывает */
+/* 10. Каждый data-атрибут разметки кто-то обрабатывает */
 const used = new Set();
 for (const html of [...Object.values(all)]) {
   for (const m of html.matchAll(/data-([a-z0-9-]+)(?:=|\s|>)/g)) used.add(m[1]);
@@ -157,4 +190,5 @@ for (const k of used) {
 
 await vite.close();
 console.log(`панель: ${renders} рендеров, ${prod.length} осей, ${Object.keys(TITLES).length} экранов, `
-  + `${Object.keys(MODALS).length} модалок, ${PRESETS.length} связок, ${TOUR.length} шагов обучения — ошибок нет`);
+  + `${Object.keys(MODALS).length} модалок, ${PRESETS.length} связок, ${TOUR.length} шагов обучения, `
+  + `чат — ошибок нет`);

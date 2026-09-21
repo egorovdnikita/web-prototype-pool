@@ -1,12 +1,13 @@
 import { useEffect, useRef } from 'react'
+import { CHAT_HINTS } from '@/chat'
 import { AXES, AX_OWN, AX_STYLE, AXCAT, PRESETS, DEF, SCREEN_NAMES, TITLES, MODALS, ICON_PACKS, iconSample, FONTS } from '@/legacy/prototype'
 import { useApp } from '@/state/store'
-import type { Scenario } from '@/state/types'
+import type { Scenario, Ui } from '@/state/types'
 
 type Key = keyof Scenario
 
-const TABS: [NonNullable<ReturnType<() => 'ax' | 'sty' | 'sets' | 'go'>>, string][] = [
-  ['ax', 'Оси'], ['sty', 'Стиль'], ['sets', 'Наборы'], ['go', 'Переходы'],
+const TABS: [NonNullable<Ui['sctab']>, string][] = [
+  ['ax', 'Оси'], ['sty', 'Стиль'], ['sets', 'Наборы'], ['go', 'Переходы'], ['chat', 'Чат'],
 ]
 /* Оси оформления живут на своей вкладке — в списке состояний продукта им не место */
 const STY = (k: string) => AX_STYLE.has(k)
@@ -227,7 +228,9 @@ export function ScenarioPanel() {
         </div>
 
         <div className="scbar">
-          <input className="scsearch" id="scq" placeholder="Найти ось, значение или экран" defaultValue={U.scq || ''} />
+          {tab !== 'chat' && (
+            <input className="scsearch" id="scq" placeholder="Найти ось, значение или экран" defaultValue={U.scq || ''} />
+          )}
           {tab === 'ax' && (
             <>
               <button className={`scchip ${onlyDirty ? 'on' : ''}`} aria-pressed={onlyDirty} data-onlydirty title="Только изменённые оси">
@@ -273,6 +276,37 @@ export function ScenarioPanel() {
               <p className="scnote">Ничего не нашлось. Сбросьте поиск или фильтры.</p>
             )}
           </>
+        )}
+
+        {tab === 'chat' && (
+          <div className="scchat">
+            <p className="scdesc">
+              Чат включает состояния словами: «авария на парке», «тёмная тема», «открой выплаты».
+              Разбор запроса пока свой, без модели — прототип раздаётся статикой, ключу от API
+              там негде лежать.
+            </p>
+            <div className="scmsgs">
+              {(U.chat || []).map((m, i) => (
+                <div className={`scmsg ${m.role}`} key={i}>{m.text}</div>
+              ))}
+              {!(U.chat || []).length && (
+                <div className="scmsg bot">Скажите, что показать. Например: «крупный клиент»,
+                  «пусто в таблицах», «наблюдатель», «шрифт Onest».</div>
+              )}
+            </div>
+            <div className="scbar">
+              {((U.chat || []).length ? U.chatchips || [] : CHAT_HINTS).map((c) => (
+                <button className="scchip" data-chatsay={c} key={c}>{c}</button>
+              ))}
+              {!!(U.chat || []).length && (
+                <button className="scchip" data-chatclear title="Очистить переписку">Очистить</button>
+              )}
+            </div>
+            <div className="scsave">
+              <input id="scchat" placeholder="Что показать?" />
+              <button data-chatsend>Отправить</button>
+            </div>
+          </div>
         )}
 
         {tab === 'sty' && (

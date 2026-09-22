@@ -368,7 +368,11 @@ run('открыта модалка', { ...DEF }, ui(), { modal: 'export' }, (htm
   /* Карточки собраны как на настоящих экранах: шапка с заголовком,
      таблица с пагинацией, показатели с иконкой */
   if (!html.includes('class="ch"')) fail('у карточек нет шапки');
-  if (!html.includes('class="pager"')) fail('у таблицы нет пагинации');
+  /* Пагинация на пять строк — шум: вместо неё подпись «показаны N» */
+  if (!html.includes('Показаны')) fail('у таблицы нет подписи о числе записей');
+  /* Период — один на страницу, а не чипы на каждой карточке */
+  if ((html.match(/data-seg="draft-period"/g) || []).length < 1) fail('нет общей панели периода');
+  if (html.includes('draft-ch-')) fail('на карточке диаграммы остались свои чипы периода');
   if (!html.includes('class="ic"')) fail('у показателей нет иконки');
   if (!html.includes('class="tbl"') || !html.includes('statcard')) fail('блоки собраны не из дизайн-системы');
   if (!html.includes('<svg')) fail('график не нарисовался');
@@ -427,9 +431,11 @@ run('открыта модалка', { ...DEF }, ui(), { modal: 'export' }, (htm
      переключала постороннюю ось вместо правки черновика */
   const many = dr('Без общего графика а много разных диограмм', dr('новый раздел Сводка'));
   if (!many) fail('«без графика, а много диаграмм» не поправила черновик');
-  if (many.blocks.filter((b) => b.t === 'chart').length < 3) fail('«много диаграмм» дало меньше трёх');
-  const kinds = new Set(many.blocks.filter((b) => b.t === 'chart').map((b) => b.kind));
-  if (kinds.size < 2) fail('«разные диаграммы» вышли одинаковыми');
+  const charts = many.blocks.filter((b) => b.t === 'chart');
+  /* Сколько поместится — столько и добавит: страница уже полная,
+     потолок блоков её режет. Важно, что диаграммы разные. */
+  if (charts.length < 2) fail('«много диаграмм» дало меньше двух');
+  if (new Set(charts.map((b) => b.kind)).size < 2) fail('«разные диаграммы» вышли одинаковыми');
   /* Диаграммы несут свои числа, а не берут график хэшрейта из прототипа */
   for (const b of many.blocks.filter((x) => x.t === 'chart')) {
     if (!b.values || b.values.length < 2) fail(`диаграмма ${b.kind} без данных`);
@@ -465,7 +471,20 @@ run('открыта модалка', { ...DEF }, ui(), { modal: 'export' }, (htm
   const bonus = dr('новый раздел Бонусы');
   if (!bonus.blocks.some((b) => b.t === 'actions')) fail('шаблон «бонусы» без кнопок');
   const analytics = dr('новый раздел Аналитика');
-  if (analytics.blocks.filter((b) => b.t === 'chart').length < 2) fail('шаблон «аналитика» без графиков');
+  if (!analytics.blocks.some((b) => b.t === 'chart')) fail('шаблон «аналитика» без графика');
+  if (!analytics.blocks.some((b) => b.t === 'list')) fail('шаблон «аналитика» без рейтинга');
+  /* Числа на странице сходятся: герой равен сумме ряда, доли дают сто */
+  const hero = analytics.blocks.find((b) => b.t === 'kpi');
+  const line = analytics.blocks.find((b) => b.t === 'chart' && b.values);
+  const sum = line.values.reduce((a, b) => a + b, 0);
+  if (hero.value.replace(/[^\d]/g, '') !== String(sum)) fail('герой не равен сумме ряда');
+  const rank = analytics.blocks.find((b) => b.t === 'list');
+  if (rank.items.reduce((a, b) => a + b.share, 0) !== 100) fail('доли рейтинга не дают ста процентов');
+  /* Даты в таблице — те же дни, что на диаграмме */
+  const days = analytics.blocks.find((b) => b.t === 'table');
+  /* Свежие записи сверху и те же дни, что на диаграмме */
+  if (days.rows[0][0] !== line.labels[line.labels.length - 1]) fail('таблица живёт своими датами');
+  if (!days.rows.every((r) => line.labels.includes(r[0]))) fail('в таблице дни не из ряда');
   /* Навигация не должна превращаться в генерацию */
   for (const q of ['открой выплаты', 'открой раздел воркеры', 'авария на парке', 'фон темнее']) {
     if (answer(q, { ...DEF }, false, null).draft) fail(`«${q}» собрала черновик`);
@@ -487,8 +506,8 @@ run('открыта модалка', { ...DEF }, ui(), { modal: 'export' }, (htm
   if (pay.blocks.length < 7) fail(`экран из ${pay.blocks.length} блоков — это всё ещё набросок`);
   if (D.draftSize(pay) > D.CAPS.link) fail('проработанный экран не влезает в ссылку');
   /* Рейтинг и лента приходят с данными, а не пустыми */
-  const rank = pay.blocks.find((b) => b.t === 'list');
-  if (!rank.items.every((i) => i.label && i.value && typeof i.share === 'number'))
+  const payRank = pay.blocks.find((b) => b.t === 'list');
+  if (!payRank.items.every((i) => i.label && i.value && typeof i.share === 'number'))
     fail('в рейтинге нет значений или долей');
   const feed = pay.blocks.find((b) => b.t === 'feed');
   if (!feed.items.every((i) => i.time && i.text)) fail('в ленте нет времени или текста');

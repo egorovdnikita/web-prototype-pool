@@ -10,8 +10,8 @@ import {
   TOKENS, BASE, parseTune, tuneStr, tuneWarnings, valueOf, readable, contrast,
   darken, lighten, warmer, cooler,
 } from './theme'
-import { genFeed, genList, genRows, genSeries, seedOf, skeletonDraft, vetDraft, CAPS,
-  type ChartKind, type Draft, type Block } from './draft'
+import { genFeed, genList, genRows, genSeries, pageData, rowsFor, seedOf, skeletonDraft,
+  vetDraft, CAPS, type ChartKind, type Draft, type Block, type PageData } from './draft'
 
 export interface ChatMsg { role: 'you' | 'bot'; text: string }
 
@@ -236,20 +236,32 @@ const listTitle = (topic: string) => {
         : /отч[её]т/.test(low) ? 'Отчёты по месяцам'
           : 'Топ воркеров по хэшрейту'
 }
-/** Главное число раздела: берём последнюю точку ряда и дельту к прошлой */
-function kpiOf(topic: string, seed: number): Block {
-  const { values, unit } = genSeries('line', topic, seed)
-  const last = values[values.length - 1], prev = values[values.length - 2] || last
-  const d = Math.round(((last - prev) / (prev || 1)) * 100)
-  const sum = values.reduce((a, b) => a + b, 0)
+/* Все блоки страницы берут числа из одного набора: сумма ряда — герой,
+   его дни — подписи диаграммы и строки таблицы, доли режут ту же сумму.
+   Иначе на экране три разные правды, и это первое, что видно. */
+const amount = (v: number, d: PageData) =>
+  d.unit === '₽' ? `${v.toLocaleString('ru')} ₽` : `${v.toLocaleString('ru')}${d.unit ? ' ' + d.unit : ''}`
+
+function kpiOf(topic: string, seedOrData: number | PageData): Block {
+  const d = typeof seedOrData === 'number' ? pageData(topic) : seedOrData
   return {
     t: 'kpi',
-    label: unit === '₽' ? 'Доход за 8 дней' : unit ? 'Средний хэшрейт' : 'Всего за период',
-    value: `${sum.toLocaleString('ru')}${unit ? ' ' + unit : ''}`,
-    note: `За последние сутки ${last.toLocaleString('ru')}${unit ? ' ' + unit : ''}`,
-    delta: `${d >= 0 ? '+' : '−'}${Math.abs(d)}%`,
+    label: d.money ? 'Доход за 8 дней' : d.unit ? 'Средний хэшрейт' : 'Всего за период',
+    value: amount(d.total, d),
+    note: `За последние сутки ${amount(d.last, d)}`,
+    delta: `${d.delta >= 0 ? '+' : '−'}${Math.abs(d.delta)}%`,
+    spark: d.series,
   }
 }
+/** Диаграмма из общего ряда — те же дни и те же числа */
+const chartFrom = (kind: ChartKind, d: PageData, title: string): Block =>
+  kind === 'donut'
+    ? { t: 'chart', kind, title, labels: d.split.map((s) => s.label),
+      values: d.split.map((s) => Math.round((d.total * s.share) / 100)), unit: d.unit }
+    : { t: 'chart', kind, title, labels: d.days, values: d.series, unit: d.unit }
+/** Таблица из общего ряда */
+const tableFrom = (cols: string[], d: PageData, title: string): Block =>
+  ({ t: 'table', title, cols, rows: rowsFor(cols, d) })
 /** Подсказка по теме — то, что на настоящем экране объясняет правило */
 const CALLOUTS: [RegExp, string, string][] = [
   [/выплат|финанс|платеж/, 'Автовыплата уходит раз в сутки при балансе выше порога. Порог меняется в настройках.', 'neu'],
@@ -478,68 +490,74 @@ function editDraft(cur: Draft, plan: ReturnType<typeof planEdits>): ChatAnswer {
    и рейтинг рядом, ниже — детали таблицей и лента, в конце правило.
    Так устроены настоящие разделы прототипа, и черновик должен читаться
    так же, иначе он остаётся наброском. */
-const TOPICS: [RegExp, (t: string) => Block[]][] = [
-  [/аналит|статис|метрик|дашборд|сводк/, (n) => [
-    kpiOf(n, seedOf(n + 'kpi0')),
+/* Состав страницы по теме. Все числа — из общего набора (pageData),
+   поэтому герой, диаграмма, рейтинг и таблица говорят одно и то же.
+   Порядок — как на настоящих разделах: главное, разрез, динамика рядом
+   с рейтингом, детали, история, правило. */
+const TOPICS: [RegExp, (d: PageData, t: string) => Block[]][] = [
+  [/аналит|статис|метрик|дашборд|сводк/, (d) => [
+    kpiOf('', d),
     { t: 'stats', items: [
-      { label: 'Доход за 24 ч', value: '6 210 ₽', note: '+12%' },
-      { label: 'Средний хэшрейт', value: '512 TH/s' },
-      { label: 'Активных воркеров', value: '1 398' },
-      { label: 'Реджект', value: '0,42%', note: '−3%' }] },
+      { label: 'За последние сутки', value: amount(d.last, d), note: `${d.delta >= 0 ? '+' : '−'}${Math.abs(d.delta)}%` },
+      { label: 'В среднем за день', value: amount(d.avg, d) },
+      { label: 'Максимум за период', value: amount(d.max, d) },
+      { label: 'Дней в расчёте', value: String(d.series.length) }] },
     { t: 'tabs', items: ['Доход', 'Хэшрейт', 'Воркеры'] },
-    chartOf('line', n, 0),
-    { t: 'list', title: 'Топ воркеров по хэшрейту', items: genList(n, seedOf(n + 'list0')) },
-    chartOf('donut', n, 1),
-    table(['Дата', 'Показатель', 'Значение'], n, 0, 'Показатели по дням'),
-    calloutOf(n),
+    chartFrom('line', d, 'Динамика по дням'),
+    { t: 'list', title: 'Распределение', items: d.split },
+    tableFrom(['Дата', 'Показатель', 'Значение'], d, 'Показатели по дням'),
+    { t: 'feed', title: 'Последние события', items: d.feed },
+    calloutOf(''),
   ]],
-  [/бонус|акци|промо/, (n) => [
+  [/бонус|акци|промо/, (d) => [
+    kpiOf('', d),
     { t: 'stats', items: [
-      { label: 'Активных бонусов', value: '14' },
-      { label: 'Начислено', value: '86 200 ₽', note: '+8%' },
-      { label: 'Использовано', value: '61 400 ₽' }] },
+      { label: 'Начислено за период', value: amount(d.total, d) },
+      { label: 'За последние сутки', value: amount(d.last, d), note: `${d.delta >= 0 ? '+' : '−'}${Math.abs(d.delta)}%` },
+      { label: 'В среднем за день', value: amount(d.avg, d) }] },
     { t: 'tabs', items: ['Активные', 'История', 'Сгоревшие'] },
-    { t: 'list', title: 'Бонусы по типам', items: genList(n, seedOf(n + 'list0')) },
-    table(['Дата', 'Бонус', 'Статус', 'Сумма'], n, 0, 'Начисления'),
-    { t: 'feed', title: 'Последние события', items: genFeed(n, seedOf(n + 'feed0')) },
+    { t: 'list', title: 'Бонусы по типам', items: d.split },
+    tableFrom(['Дата', 'Бонус', 'Статус', 'Сумма'], d, 'Начисления'),
+    { t: 'feed', title: 'Последние события', items: d.feed },
     { t: 'actions', items: ['Начислить бонус', 'Правила программы'] },
-    calloutOf(n),
+    calloutOf('бонус'),
   ]],
-  [/реферал|партн/, (n) => [
-    kpiOf(n, seedOf(n + 'kpi0')),
+  [/реферал|партн/, (d) => [
+    kpiOf('', d),
     { t: 'stats', items: [
-      { label: 'Рефералов', value: '37', note: '+4' },
-      { label: 'Активных', value: '29' },
-      { label: 'Уровень', value: '15%' }] },
-    chartOf('line', n, 0),
-    { t: 'list', title: 'Топ рефералов', items: genList(n, seedOf(n + 'list0')) },
-    table(['Дата', 'Реферал', 'Хэшрейт', 'Начислено'], n, 0, 'Начисления по рефералам'),
-    calloutOf(n),
+      { label: 'Начислено за сутки', value: amount(d.last, d), note: `${d.delta >= 0 ? '+' : '−'}${Math.abs(d.delta)}%` },
+      { label: 'В среднем за день', value: amount(d.avg, d) },
+      { label: 'Уровень программы', value: '15%' }] },
+    chartFrom('line', d, 'Начисления по дням'),
+    { t: 'list', title: 'Топ рефералов', items: d.split },
+    tableFrom(['Дата', 'Реферал', 'Хэшрейт', 'Начислено'], d, 'Начисления по рефералам'),
+    { t: 'feed', title: 'Последние события', items: d.feed },
+    calloutOf('реферал'),
   ]],
-  [/отчет|отчёт|выгруз|документ/, (n) => [
+  [/отчет|отчёт|выгруз|документ/, (d) => [
     { t: 'stats', items: [
       { label: 'Готовых отчётов', value: '11' },
       { label: 'В работе', value: '1' },
       { label: 'С ошибками', value: '2' }] },
     { t: 'tabs', items: ['Готовые', 'В работе', 'С ошибками'] },
-    table(['Дата', 'Отчёт', 'Период', 'Статус'], n, 0, 'Отчёты'),
-    { t: 'feed', title: 'История формирования', items: genFeed(n, seedOf(n + 'feed0')) },
+    tableFrom(['Дата', 'Отчёт', 'Период', 'Статус'], d, 'Отчёты'),
+    { t: 'feed', title: 'История формирования', items: d.feed },
     { t: 'actions', items: ['Сформировать отчёт', 'Скачать все'] },
-    calloutOf(n),
+    calloutOf('отчёт'),
   ]],
-  [/выплат|платеж|платёж|финанс/, (n) => [
-    kpiOf(n, seedOf(n + 'kpi0')),
+  [/выплат|платеж|платёж|финанс/, (d) => [
+    kpiOf('', d),
     { t: 'stats', items: [
-      { label: 'К выплате', value: '42 900 ₽' },
-      { label: 'Выплачено за месяц', value: '318 600 ₽', note: '+6%' },
-      { label: 'Средняя выплата', value: '10 600 ₽' },
+      { label: 'К выплате сейчас', value: amount(d.last, d) },
+      { label: 'Выплачено за период', value: amount(d.total, d), note: `${d.delta >= 0 ? '+' : '−'}${Math.abs(d.delta)}%` },
+      { label: 'Средняя выплата', value: amount(d.avg, d) },
       { label: 'Отклонено', value: '2' }] },
     { t: 'tabs', items: ['Все', 'Автовыплаты', 'Ручные'] },
-    chartOf('bars', n, 0),
-    { t: 'list', title: 'Доход по монетам', items: genList(n, seedOf(n + 'list0')) },
-    table(['Дата', 'Сумма', 'Кошелёк', 'Статус'], n, 0, 'История выплат'),
-    { t: 'feed', title: 'Последние события', items: genFeed(n, seedOf(n + 'feed0')) },
-    calloutOf(n),
+    chartFrom('bars', d, 'Выплаты по дням'),
+    { t: 'list', title: 'Доход по монетам', items: d.split },
+    tableFrom(['Дата', 'Сумма', 'Кошелёк', 'Статус'], d, 'История выплат'),
+    { t: 'feed', title: 'Последние события', items: d.feed },
+    calloutOf('выплат'),
   ]],
 ]
 
@@ -547,16 +565,20 @@ const TOPICS: [RegExp, (t: string) => Block[]][] = [
 export function topicDraft(title: string): Draft {
   const low = title.toLowerCase()
   const hit = TOPICS.find(([re]) => re.test(low))
-  if (hit) return vetDraft({ title, blocks: hit[1](title) })!
-  /* Незнакомая тема — та же композиция, только подписи общие */
-  const seed = seedOf(title)
+  const d = pageData(title)
+  if (hit) return vetDraft({ title, blocks: hit[1](d, title) })!
+  /* Незнакомая тема — та же композиция и те же согласованные числа,
+     только подписи общие */
   return vetDraft({ title, blocks: [
-    kpiOf(title, seed),
-    ...skeletonDraft(title).blocks.filter((b) => b.t === 'stats'),
-    chartOf('line', title, 0),
-    { t: 'list', title: listTitle(title), items: genList(title, seedOf(title + 'list')) },
-    table(['Дата', 'Событие', 'Значение'], title, 0, 'Последние записи'),
-    { t: 'feed', title: 'Лента событий', items: genFeed(title, seedOf(title + 'feed')) },
+    kpiOf(title, d),
+    { t: 'stats', items: [
+      { label: 'За последние сутки', value: amount(d.last, d), note: `${d.delta >= 0 ? '+' : '−'}${Math.abs(d.delta)}%` },
+      { label: 'В среднем за день', value: amount(d.avg, d) },
+      { label: 'Максимум за период', value: amount(d.max, d) }] },
+    chartFrom('line', d, 'Динамика по дням'),
+    { t: 'list', title: listTitle(title), items: d.split },
+    tableFrom(['Дата', 'Событие', 'Значение'], d, 'Последние записи'),
+    { t: 'feed', title: 'Лента событий', items: d.feed },
     calloutOf(title),
   ] })!
 }

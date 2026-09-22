@@ -18,7 +18,7 @@
    - всё, что пришло снаружи, экранируется: черновик приезжает по ссылке,
      а ссылка — это чужой ввод. */
 import {
-  I, card, chart, dayChips, dyn, emptyBox, fsel, pager, segi, segLine, status, type Model,
+  I, card, chart, dayChips, dyn, emptyBox, fsel, segi, segLine, status, type Model,
 } from '@/legacy/prototype'
 
 /** Виды диаграмм, которые черновик рисует сам */
@@ -27,7 +27,7 @@ export type ChartKind = 'line' | 'bars' | 'donut'
 export type Block =
   /* Герой страницы: главное число крупно, рядом контекст и дельта.
      На экранах прототипа так открываются «Доход» и «Воркеры». */
-  | { t: 'kpi'; label: string; value: string; note?: string; delta?: string }
+  | { t: 'kpi'; label: string; value: string; note?: string; delta?: string; spark?: number[] }
   | { t: 'stats'; items: { label: string; value: string; note?: string }[] }
   | { t: 'table'; title?: string; cols: string[]; rows: string[][] }
   /* Рейтинг с полосами: «топ воркеров», «доли монет» — то, ради чего
@@ -117,8 +117,12 @@ export function vetDraft(raw: unknown): Draft | null {
       }
       case 'kpi': {
         const label = clip(b.label, CAPS.label), value = clip(b.value, CAPS.value)
+        const spark = list(b.spark).slice(0, CAPS.points)
+          .map((v) => (typeof v === 'number' && isFinite(v) ? Math.round(v) : NaN))
+          .filter((v) => !isNaN(v))
         if (label && value) blocks.push({ t: 'kpi', label, value,
-          note: clip(b.note, CAPS.label), delta: clip(b.delta, 12) })
+          note: clip(b.note, CAPS.label), delta: clip(b.delta, 12),
+          ...(spark.length > 2 ? { spark } : {}) })
         break
       }
       case 'list': {
@@ -274,7 +278,39 @@ const cardHead = (title: string, right = '') =>
 
 /** Спецификация → разметка: блоки дизайн-системы плюс свои диаграммы */
 export function renderDraft(d: Draft, m: Model): string {
-  const out = d.blocks.map((b, i) => {
+  const one = (b: Block, i: number) => block(b, i, m, d)
+  /* Рейтинг рядом с диаграммой, а не под ней: страница из одинаковых
+     карточек в столбик — первое, по чему видно генерацию. Пара идёт
+     в две колонки и схлопывается на узком экране. */
+  const out: string[] = []
+  for (let i = 0; i < d.blocks.length; i++) {
+    const b = d.blocks[i], next = d.blocks[i + 1]
+    if (b.t === 'chart' && next?.t === 'list') {
+      out.push(`<div class="dpair">${one(b, i)}${one(next, i + 1)}</div>`)
+      i++
+      continue
+    }
+    out.push(one(b, i))
+  }
+  /* Панель фильтров — одна на страницу. Раньше чипы периода висели
+     на каждой карточке: три одинаковых контрола в столбик читаются
+     как шум, а не как управление. */
+  const bar = d.blocks.some((b) => b.t === 'chart' || b.t === 'table')
+    ? `<div class="dtools">${dayChips('draft-period', 1)}
+        <div class="spacer"></div>
+        <button class="btn out" data-toast="Экспорт — это черновик, кнопка ничего не делает">Экспорт</button>
+      </div>`
+    : ''
+  const note = `<div class="draftbar">${status('warn', 'Черновик')}`
+    + '<span>Собран в чате из блоков дизайн-системы. С макетами не сверялся, '
+    + 'данные выдуманы — живёт в вашей ссылке.</span>'
+    + '<button class="btn link" data-panel>Изменить в чате</button></div>'
+  return note + bar + out.join('')
+}
+
+function block(b: Block, i: number, m: Model, page: Draft): string {
+  {
+    void page
     switch (b.t) {
       case 'stats':
         /* Сетка под число показателей: три карточки в ряду на четыре
@@ -304,8 +340,9 @@ export function renderDraft(d: Draft, m: Model): string {
           : []
         const pick = opts.length ? segi(`${id}-st`, 0) : 0
         const rows = stCol >= 0 && pick > 0 ? b.rows.filter((r) => r[stCol] === opts[pick]) : b.rows
-        const right = `${opts.length > 1 ? fsel(`${id}-st`, opts) : ''}${dayChips(`${id}-days`, 1)}`
-          + `<button class="ib" data-toast="Экспорт — это черновик, кнопка ничего не делает">${I.dl}</button>`
+        /* Из контролов на карточке оставляем тот, что делает дело:
+           фильтр по статусу. Период — общий, он в панели сверху. */
+        const right = opts.length > 1 ? fsel(`${id}-st`, opts) : ''
         return card(`${cardHead(b.title || 'Данные', right)}`
           + (rows.length
             ? `<div class="tw"><table class="tbl"><thead><tr>${b.cols.map((c, j) =>
@@ -318,31 +355,39 @@ export function renderDraft(d: Draft, m: Model): string {
                   ? `<td class="num mono">${esc(v)}</td>`
                   : `<td class="${DATECELL.test(v) ? 'mono' : ''}">${esc(v)}</td>`
               }).join('')}</tr>`).join('')}</tbody></table></div>`
-              + pager(id, rows.length, 10)
-            : emptyBox('Пока пусто', 'Данных для этой таблицы ещё нет')))
+
+            : emptyBox('Пока пусто', 'Данных для этой таблицы ещё нет'))
+          + (rows.length ? `<div class="dnote">${rowsNote(rows.length)}`
+            + '<button class="btn link" data-toast="Полный список — это черновик">Показать все</button></div>' : ''))
       }
       case 'chart': {
-        if (!b.values || !b.labels) return card(`${cardHead(b.title || 'График', zoomless())}${chart(m)}`)
-        const id = `draft-ch-${i}`
-        /* Чипы периода реально режут ряд, а не просто подсвечиваются */
-        const cut = [Math.max(2, Math.ceil(b.values.length / 2)), b.values.length, b.values.length][segi(`${id}-days`, 1)]
+        if (!b.values || !b.labels) return card(`${cardHead(b.title || 'График')}${chart(m)}`)
+        /* Период общий для всей страницы и реально режет ряд */
+        const cut = [Math.max(2, Math.ceil(b.values.length / 2)), b.values.length, b.values.length][segi('draft-period', 1)]
         const labels = b.kind === 'donut' ? b.labels : b.labels.slice(-cut)
         const values = b.kind === 'donut' ? b.values : b.values.slice(-cut)
-        const right = b.kind === 'donut' ? zoomless() : `${dayChips(`${id}-days`, 1)}${zoomless()}`
-        return card(`${cardHead(b.title || 'График', right)}`
+        const sub = b.kind === 'donut'
+          ? `Доли от ${nfmt(values.reduce((x, y) => x + y, 0))}${b.unit ? ' ' + esc(b.unit) : ''}`
+          : `По дням${b.unit ? `, ${esc(b.unit)}` : ''} · всего ${nfmt(values.reduce((x, y) => x + y, 0))}`
+        return card(`${cardHead(b.title || 'График')}<p class="dsub">${sub}</p>`
           + drawChart(b.kind || 'line', labels, values, b.unit || ''))
       }
       case 'kpi':
-        /* Герой страницы — акцентная плашка дизайн-системы: подпись,
-           крупное число, под ним пересчёт и дельта рядом */
+        /* Герой страницы — акцентная плашка дизайн-системы. Справа
+           спарклайн: иначе половина плашки пустая, а это первое,
+           за что цепляется глаз на широком экране. */
         return card(`<div class="hero dhero">
-          <div class="hrow"><span class="l">${esc(b.label)}</span>
-            ${b.delta ? dyn(/^[-−]/.test(b.delta) ? 'neg' : 'teal', esc(b.delta.replace(/^[+\-−]/, ''))) : ''}</div>
-          <div class="hval"><div class="v mono">${esc(b.value)}</div>
-            ${b.note ? `<div class="s mono">${esc(b.note)}</div>` : ''}</div></div>`)
+          <div class="dheroL">
+            <div class="hrow"><span class="l">${esc(b.label)}</span>
+              ${b.delta ? dyn(/^[-−]/.test(b.delta) ? 'neg' : 'teal', esc(b.delta.replace(/^[+\-−]/, ''))) : ''}</div>
+            <div class="hval"><div class="v mono">${esc(b.value)}</div>
+              ${b.note ? `<div class="s mono">${esc(b.note)}</div>` : ''}</div>
+          </div>
+          ${b.spark && b.spark.length > 2 ? spark(b.spark) : ''}</div>`)
       case 'list': {
         const max = Math.max(...b.items.map((x) => x.share ?? 0), 1)
-        return card(`${cardHead(b.title || 'Рейтинг', zoomless())}
+        return card(`${cardHead(b.title || 'Рейтинг')}
+          <p class="dsub">Доля от общего объёма</p>
           <div class="dlist">${b.items.map((x, n) => `<div class="drow">
             <span class="dn">${n + 1}</span>
             <span class="dnm">${esc(x.label)}</span>
@@ -352,7 +397,7 @@ export function renderDraft(d: Draft, m: Model): string {
           </div>`).join('')}</div>`)
       }
       case 'feed':
-        return card(`${cardHead(b.title || 'Последние события', zoomless())}
+        return card(`${cardHead(b.title || 'Последние события')}
           <div class="dfeed">${b.items.map((x) => `<div class="dfrow">
             <i class="${TONE[x.tone || ''] || 'neu'}"></i>
             <span class="dft mono">${esc(x.time)}</span>
@@ -374,22 +419,27 @@ export function renderDraft(d: Draft, m: Model): string {
       default:
         return ''
     }
+  }
+}
+
+/** Спарклайн героя: тот же ряд, что и на диаграмме, но без осей */
+function spark(values: number[]) {
+  const max = Math.max(...values), min = Math.min(...values, 0)
+  const W = 240, H = 64
+  const pts = values.map((v, i) => {
+    const x = (i / (values.length - 1)) * W
+    const y = H - ((v - min) / (max - min || 1)) * H
+    return `${x.toFixed(1)},${y.toFixed(1)}`
   })
-  /* Полоса сверху — тонкая, чтобы не съедать первый экран, но заметная:
-     черновик никогда не должен сойти за сверенный раздел. */
-  const note = `<div class="draftbar">${status('warn', 'Черновик')}`
-    + '<span>Собран в чате из блоков дизайн-системы. С макетами не сверялся, '
-    + 'данные выдуманы — живёт в вашей ссылке.</span>'
-    + '<button class="btn link" data-panel>Изменить в чате</button></div>'
-  return note + out.join('')
+  return `<svg class="dspark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M${pts.join(' L')} L${W},${H} L0,${H} Z" fill="currentColor" opacity=".18"/>
+    <polyline points="${pts.join(' ')}" fill="none" stroke="currentColor" stroke-width="2"
+      vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>`
 }
 
 /* Тон события и подсказки: те же три состояния, что у статусов */
 const TONE: Record<string, string> = { ok: 'ok', warn: 'warn', err: 'err', neu: 'neu' }
 
-/* Кнопка-иконка «ещё» в шапке карточки: на экранах прототипа у каждой
-   карточки справа есть хоть один контрол, без него шапка выглядит пустой */
-const zoomless = () => `<button class="ib" data-toast="Меню карточки — это черновик">${I.dots}</button>`
 
 /** Локальная заготовка: без модели придумать содержимое неоткуда, но
     каркас раздела собрать можно — дальше он правится фразами или руками. */
@@ -461,14 +511,19 @@ function drawBars(labels: string[], values: number[], unit: string) {
   return `<div class="dchart">${a.unit}
     <div class="dplotrow">${a.col}
       <div class="dplot">${a.grid}
-        <div class="dbars">${values.map((v, i) =>
-          `<div class="dbar">
-            <span class="dv">${nfmt(v)}</span>
-            <i style="height:${Math.max(2, (v / max) * 100)}%;background:${HUES[0]}"></i>
-          </div>`).join('')}</div>
+        <div class="dbars">${values.map((v, i) => {
+          /* Число подписываем у пика, остальные читаются по сетке:
+             восемь подписей подряд — это таблица, а не диаграмма */
+          const top = v === Math.max(...values)
+          return `<div class="dbar" title="${esc(labels[i])}: ${nfmt(v)}">
+            ${top ? `<span class="dv">${nfmt(v)}</span>` : ''}
+            <i class="${top ? 'top' : ''}" style="height:${Math.max(2, (v / max) * 100)}%"></i>
+          </div>`
+        }).join('')}</div>
       </div>
     </div>
-    <div class="dls">${labels.map((l) => `<span>${esc(l)}</span>`).join('')}</div>
+    <div class="dls">${labels.map((l, i) =>
+      `<span>${labels.length > 6 && i % 2 ? '' : esc(l)}</span>`).join('')}</div>
     ${legend('Значение', unit)}</div>`
 }
 
@@ -490,11 +545,18 @@ function drawLine(labels: string[], values: number[], unit: string) {
           <polyline points="${pts.join(' ')}" fill="none" stroke="var(--accent)" stroke-width="2"
             vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
         </svg>
-        <div class="ddots">${values.map((v, i) =>
-          `<i style="left:${(x(i) / W) * 100}%;bottom:${(v / max) * 100}%" title="${esc(labels[i])}: ${nfmt(v)}"></i>`).join('')}</div>
+        <div class="ddots">${values.map((v, i) => {
+          /* Точки на каждом дне превращают линию в бусы — оставляем пик
+             и последнее значение, по ним и читают график */
+          const show = v === Math.max(...values) || i === values.length - 1
+          return show
+            ? `<i class="${i === values.length - 1 ? 'last' : ''}" style="left:${(x(i) / W) * 100}%;bottom:${(v / max) * 100}%" title="${esc(labels[i])}: ${nfmt(v)}"></i>`
+            : ''
+        }).join('')}</div>
       </div>
     </div>
-    <div class="dls">${labels.map((l) => `<span>${esc(l)}</span>`).join('')}</div>
+    <div class="dls">${labels.map((l, i) =>
+      `<span>${labels.length > 6 && i % 2 ? '' : esc(l)}</span>`).join('')}</div>
     ${legend('Значение', unit)}</div>`
 }
 
@@ -511,7 +573,10 @@ function drawDonut(labels: string[], values: number[], unit: string) {
     return seg
   }).join('')
   return `<div class="dchart donut">
-    <svg viewBox="0 0 160 160" class="ddonut" aria-hidden="true">${rings}</svg>
+    <div class="ddwrap">
+      <svg viewBox="0 0 160 160" class="ddonut" aria-hidden="true">${rings}</svg>
+      <div class="ddmid"><b>${nfmt(sum)}</b><span>${esc(unit || 'всего')}</span></div>
+    </div>
     <div class="dleg">${values.map((v, i) =>
       `<span><i style="background:${HUES[i % HUES.length]}"></i>${esc(labels[i])}
         <b>${nfmt(v)}${esc(unit ? ' ' + unit : '')}</b>
@@ -664,3 +729,82 @@ export function genFeed(topic: string, seed: number) {
     text, tone,
   }))
 }
+
+/* ===== один набор чисел на всю страницу =====
+
+   Главная примета сгенерированного экрана — цифры, которые не сходятся:
+   герой показывает 866 656 ₽, столбики дают в сумме 480 тысяч, таблица
+   живёт своей жизнью, а доли не складываются в сто процентов. Поэтому
+   страница считается из одного ряда: сумма ряда — это герой, его дни —
+   это подписи диаграммы, строки таблицы и время в ленте, а доли режут
+   ту же сумму. */
+
+export interface PageData {
+  unit: string
+  money: boolean
+  days: string[]
+  series: number[]
+  total: number
+  last: number
+  prev: number
+  delta: number
+  avg: number
+  max: number
+  split: { label: string; value: string; share: number }[]
+  feed: { time: string; text: string; tone: string }[]
+}
+
+const money = (v: number) => `${Math.round(v).toLocaleString('ru')} ₽`
+const withUnit = (v: number, unit: string) =>
+  unit === '₽' ? money(v) : `${Math.round(v).toLocaleString('ru')}${unit ? ' ' + unit : ''}`
+
+export function pageData(topic: string): PageData {
+  const seed = seedOf(topic)
+  const { labels: days, values: series, unit } = genSeries('line', topic, seed)
+  const total = series.reduce((a, b) => a + b, 0)
+  const last = series[series.length - 1], prev = series[series.length - 2] || last
+  const r = rnd(seed ^ 0x9e37)
+  const low = topic.toLowerCase()
+  const names = (RANK_NAMES.find(([re]) => re.test(low)) || [null, RANK_DEF])[1]
+  /* Доли режут ту же сумму и складываются ровно в сто процентов —
+     остаток отдаём первой строке, иначе «99%» бросается в глаза */
+  const raw = names.map(() => 1 + r() * 3)
+  const sum = raw.reduce((a, b) => a + b, 0)
+  const shares = raw.map((x) => Math.round((x / sum) * 100))
+  shares[0] += 100 - shares.reduce((a, b) => a + b, 0)
+  const split = names.map((label, i) => ({
+    label, value: withUnit((total * shares[i]) / 100, unit), share: shares[i],
+  }))
+  const src = (EVENTS.find(([re]) => re.test(low)) || [null, EVENT_DEF])[1]
+  const feed = src.slice(0, CAPS.feedn).map(([text, tone], i) => ({
+    time: `${days[days.length - 1 - i] || days[0]} ${String(9 + Math.floor(r() * 12)).padStart(2, '0')}:${String(Math.floor(r() * 60)).padStart(2, '0')}`,
+    text, tone,
+  }))
+  return {
+    unit, money: unit === '₽', days, series, total, last, prev,
+    delta: Math.round(((last - prev) / (prev || 1)) * 100),
+    avg: Math.round(total / series.length),
+    max: Math.max(...series),
+    split, feed,
+  }
+}
+
+/** Строки таблицы из тех же дней и значений, что и диаграмма */
+export function rowsFor(cols: string[], d: PageData): string[][] {
+  const r = rnd(seedOf(cols.join()))
+  const from = Math.max(0, d.days.length - CAPS.rows)
+  /* Свежие записи сверху — как в «Истории выплат» на настоящем экране */
+  return d.days.slice(from).map((day, k) => [day, d.series[from + k]] as const)
+    .reverse()
+    .map(([day, val], i) => cols.map((c) => {
+    const low = c.toLowerCase()
+    if (/дата|день|период/.test(low)) return day
+    if (/сумма|доход|начислен|выплач|оборот|прибыл|значен/.test(low)) return withUnit(val, d.unit)
+    if (/хэшрейт|хешрейт|мощност/.test(low)) return `${Math.round(val / 100)} TH/s`
+    const hit = CELLS.find(([re]) => re.test(low))
+    return hit ? hit[1](r, i) : String(Math.round(val))
+  }))
+}
+
+/** Сколько строк показали из скольких — вместо пагинации на пять записей */
+export const rowsNote = (n: number) => `Показаны ${n} последних записей`

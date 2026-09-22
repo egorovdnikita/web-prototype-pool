@@ -2271,7 +2271,28 @@ html{scrollbar-gutter:stable}
 /* Рейтинг, лента и плашка-подсказка — блоки, которых в дизайн-системе
    нет, но без которых дашборд выглядит недоделанным. Собраны на её
    токенах, живут только в черновике. */
-.dhero{margin:0}
+/* .hero из дизайн-системы — колонка; герою черновика нужна строка:
+   слева число, справа спарклайн */
+.dhero{margin:0;flex-direction:row;align-items:center;gap:var(--sp5)}
+.dheroL{flex:1;min-width:0}
+.dspark{flex:0 0 auto;width:min(320px,40%);height:64px;color:var(--inv-fg);opacity:.9}
+@media(max-width:900px){.dspark{display:none}}
+/* Панель фильтров страницы и пары «диаграмма + рейтинг» */
+.dtools{display:flex;align-items:center;gap:var(--sp3);flex-wrap:wrap}
+.dpair{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:var(--sp4)}
+.dpair>*{margin:0}
+@media(max-width:1100px){.dpair{grid-template-columns:minmax(0,1fr)}}
+.dsub{font-size:var(--fs-c);line-height:var(--lh-c);color:var(--c3);margin:-8px 0 var(--sp3)}
+.dnote{display:flex;align-items:center;gap:var(--sp3);margin-top:var(--sp3);
+  font-size:var(--fs-c);line-height:var(--lh-c);color:var(--c3)}
+.dnote .btn.link{height:auto;padding:0;margin-left:auto}
+.dbar i.top{background:var(--accent)}
+.dbar i{background:color-mix(in srgb, var(--accent) 38%, transparent)}
+.ddots i.last{width:8px;height:8px;margin:-4px 0 0 -4px}
+.ddwrap{position:relative;flex:0 0 auto;display:grid;place-items:center}
+.ddmid{position:absolute;text-align:center;line-height:1.1}
+.ddmid b{display:block;font-size:var(--fs-h5);font-weight:600}
+.ddmid span{font-size:var(--fs-c2);color:var(--c3)}
 .statcard .stcol{min-width:0}
 .statcard .stcol .n{white-space:nowrap}
 .statcard .stdelta{margin-top:6px}

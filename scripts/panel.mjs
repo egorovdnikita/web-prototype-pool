@@ -367,6 +367,24 @@ run('открыта модалка', { ...DEF }, ui(), { modal: 'export' }, (htm
   if (!html.includes('Черновик')) fail('нет плашки «черновик»');
   if (!html.includes('class="tbl"') || !html.includes('statcard')) fail('блоки собраны не из дизайн-системы');
   if (!html.includes('<svg')) fail('график не нарисовался');
+  /* Свои диаграммы: столбики, линия и кольцо рисуются по числам */
+  const drawn = D.renderDraft(D.vetDraft({ title: 'Д', blocks: [
+    { t: 'chart', kind: 'bars', labels: ['<b>01</b>', '02'], values: [10, 20] },
+    { t: 'chart', kind: 'line', labels: ['01', '02', '03'], values: [3, 1, 9] },
+    { t: 'chart', kind: 'donut', labels: ['BTC', 'LTC'], values: [70, 30], unit: '₽' }] }), m);
+  if (!drawn.includes('dbars') || !drawn.includes('dline') || !drawn.includes('ddonut'))
+    fail('не все виды диаграмм нарисовались');
+  if (drawn.includes('<b>01</b>')) fail('подпись диаграммы не экранирована');
+  if (!drawn.includes('70%') || !drawn.includes('30%')) fail('в кольце нет долей');
+  /* Мусор вместо чисел не должен доходить до разметки */
+  const junk = D.vetDraft({ title: 'Д', blocks: [{ t: 'chart', kind: 'evil',
+    labels: ['a', 'b'], values: ['10', NaN, Infinity, 5] }] });
+  /* От четырёх «чисел» осталось одно — это уже не диаграмма: блок
+     откатывается к графику прототипа, а не рисует точку */
+  if (junk.blocks[0].values) fail('нечисловые данные приняты');
+  const evil = D.vetDraft({ title: 'Д', blocks: [{ t: 'chart', kind: 'evil', values: [1, 2, 3] }] });
+  if (evil.blocks[0].kind !== 'line') fail('неизвестный вид диаграммы не заменён');
+  if (evil.blocks[0].labels.join() !== '1,2,3') fail('подписи не добились номерами');
 
   /* Разбор фраз */
   const dr = (text, cur = null) => answer(text, { ...DEF }, false, cur).draft;
@@ -383,8 +401,26 @@ run('открыта модалка', { ...DEF }, ui(), { modal: 'export' }, (htm
   const many = dr('Без общего графика а много разных диограмм', dr('новый раздел Сводка'));
   if (!many) fail('«без графика, а много диаграмм» не поправила черновик');
   if (many.blocks.filter((b) => b.t === 'chart').length < 3) fail('«много диаграмм» дало меньше трёх');
-  const titles = new Set(many.blocks.filter((b) => b.t === 'chart').map((b) => b.title));
-  if (titles.size < 3) fail('графики называются одинаково — их не отличить');
+  const kinds = new Set(many.blocks.filter((b) => b.t === 'chart').map((b) => b.kind));
+  if (kinds.size < 2) fail('«разные диаграммы» вышли одинаковыми');
+  /* Диаграммы несут свои числа, а не берут график хэшрейта из прототипа */
+  for (const b of many.blocks.filter((x) => x.t === 'chart')) {
+    if (!b.values || b.values.length < 2) fail(`диаграмма ${b.kind} без данных`);
+    if (b.labels.length !== b.values.length) fail('подписи не сошлись с числами');
+  }
+  /* Названный вид диаграммы: «круговую» — это кольцо, и одно, а не два */
+  const donut = dr('добавь круговую диаграмму', dr('новый раздел Сводка'));
+  const added2 = donut.blocks.filter((b) => b.t === 'chart' && b.kind === 'donut');
+  if (added2.length !== 1) fail(`«круговую диаграмму» дало ${added2.length} колец`);
+  /* Таблицы приходят с содержимым, а не пустые */
+  const filled = dr('новый раздел Выплаты');
+  const tbl = filled.blocks.find((b) => b.t === 'table');
+  if (!tbl?.rows.length) fail('таблица пришла пустой');
+  if (!tbl.rows.some((r) => /₽/.test(r.join(' ')))) fail('в таблице выплат нет сумм');
+  /* Одна и та же просьба даёт одни и те же числа — иначе ссылка не
+     воспроизводится и у коллеги будет другая картинка */
+  if (JSON.stringify(dr('новый раздел Выплаты')) !== JSON.stringify(filled))
+    fail('генерация не повторяется — ссылка покажет другое');
   /* Фраза про черновик, которую не разобрали, не должна трогать оси */
   for (const q of ['сделай красиво', 'убери лишнее отсюда', 'добавь сюда ещё чего-нибудь']) {
     const lost = answer(q, { ...DEF }, false, made);

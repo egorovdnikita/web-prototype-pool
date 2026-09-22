@@ -19,10 +19,16 @@
      а ссылка — это чужой ввод. */
 import { card, chart, emptyBox, seg, status, type Model } from '@/legacy/prototype'
 
+/** Виды диаграмм, которые черновик рисует сам */
+export type ChartKind = 'line' | 'bars' | 'donut'
+
 export type Block =
   | { t: 'stats'; items: { label: string; value: string; note?: string }[] }
   | { t: 'table'; cols: string[]; rows: string[][] }
-  | { t: 'chart'; title?: string }
+  /* Без values это старый блок — график хэшрейта из прототипа. С values
+     черновик рисует свою диаграмму: подписи и числа лежат в спецификации,
+     поэтому по ссылке у всех одно и то же, а не случайные цифры. */
+  | { t: 'chart'; title?: string; kind?: ChartKind; labels?: string[]; values?: number[]; unit?: string }
   | { t: 'empty'; title: string; text?: string }
   | { t: 'tabs'; items: string[] }
   | { t: 'actions'; items: string[] }
@@ -36,6 +42,9 @@ export interface Draft { title: string; blocks: Block[] }
 export const CAPS = {
   title: 48, blocks: 6, text: 160, label: 32, value: 24,
   stats: 4, cols: 5, rows: 6, cell: 24, tabs: 4, actions: 3,
+  /* Точек на диаграмме и длина подписи под ней: и то и другое уезжает
+     в ссылку, а больше восьми столбиков в карточке всё равно не читается */
+  points: 8, plabel: 10, unit: 8,
   /* Потолок на всю спецификацию в закодированном виде. Пределы по полям
      его не гарантируют: шесть таблиц кириллицей дают под пять тысяч
      символов, а ссылку такой длины уже неудобно пересылать. Поэтому
@@ -76,9 +85,23 @@ export function vetDraft(raw: unknown): Draft | null {
         blocks.push({ t: 'table', cols, rows })
         break
       }
-      case 'chart':
-        blocks.push({ t: 'chart', title: clip(b.title, CAPS.label) })
+      case 'chart': {
+        const one: Block = { t: 'chart', title: clip(b.title, CAPS.label) }
+        const values = list(b.values).slice(0, CAPS.points)
+          .map((v) => (typeof v === 'number' && isFinite(v) ? Math.round(v * 10) / 10 : NaN))
+          .filter((v) => !isNaN(v))
+        if (values.length > 1) {
+          const labels = list(b.labels).slice(0, values.length).map((l) => clip(l, CAPS.plabel))
+          one.kind = ['line', 'bars', 'donut'].includes(b.kind as string) ? b.kind as ChartKind : 'line'
+          one.values = values
+          /* Подписей может прийти меньше, чем чисел — добиваем номерами,
+             иначе столбики поедут относительно оси */
+          one.labels = values.map((_, i) => labels[i] || String(i + 1))
+          one.unit = clip(b.unit, CAPS.unit)
+        }
+        blocks.push(one)
         break
+      }
       case 'empty': {
         const title2 = clip(b.title, CAPS.label)
         if (title2) blocks.push({ t: 'empty', title: title2, text: clip(b.text, CAPS.text) })
@@ -163,7 +186,11 @@ export function renderDraft(d: Draft, m: Model): string {
           || `<tr><td colspan="${b.cols.length}">${emptyBox('Пока пусто', 'Данных для этой таблицы ещё нет')}</td></tr>`
           }</tbody></table></div>`)
       case 'chart':
-        return card(`${head(b.title || 'График')}${chart(m)}`)
+        /* Своя диаграмма, если в спецификации есть числа; иначе — график
+           хэшрейта из прототипа, как было в первых черновиках */
+        return card(`${head(b.title || 'График')}${b.values && b.labels
+          ? drawChart(b.kind || 'line', b.labels, b.values, b.unit || '')
+          : chart(m)}`)
       case 'empty':
         return card(emptyBox(esc(b.title), esc(b.text || '')))
       case 'tabs':
@@ -189,15 +216,180 @@ export function renderDraft(d: Draft, m: Model): string {
 /** Локальная заготовка: без модели придумать содержимое неоткуда, но
     каркас раздела собрать можно — дальше он правится фразами или руками. */
 export function skeletonDraft(title: string): Draft {
+  const seed = seedOf(title)
+  const r = rnd(seed)
+  const line = genSeries('line', title, seed)
+  const big = line.values[line.values.length - 1]
   return {
     title: title.slice(0, CAPS.title),
     blocks: [
       { t: 'stats', items: [
-        { label: 'Всего', value: '—' }, { label: 'За 24 ч', value: '—' },
-        { label: 'В среднем', value: '—' }, { label: 'Изменение', value: '—' },
+        { label: 'Всего', value: nfmt(big * 8) + (line.unit ? ' ' + line.unit : '') },
+        { label: 'За 24 ч', value: nfmt(big) + (line.unit ? ' ' + line.unit : '') },
+        { label: 'В среднем', value: nfmt(Math.round(line.values.reduce((a, b) => a + b, 0) / line.values.length)) },
+        { label: 'Изменение', value: (r() > 0.5 ? '+' : '−') + (1 + Math.floor(r() * 20)) + '%' },
       ] },
-      { t: 'chart', title: 'Динамика' },
-      { t: 'table', cols: ['Дата', 'Событие', 'Значение'], rows: [] },
+      { t: 'chart', kind: 'line', title: 'Динамика', ...line },
+      { t: 'table', cols: ['Дата', 'Событие', 'Значение'], rows: genRows(['Дата', 'Событие', 'Значение'], 5, seed) },
     ],
   }
+}
+
+/* ===== диаграммы =====
+
+   В дизайн-системе один график — линия хэшрейта, и она про хэшрейт.
+   Черновику нужны свои: столбики, линия и кольцо по произвольным числам.
+   Рисуем их сами, но цветами и радиусами дизайн-системы, чтобы черновик
+   не выпадал из прототипа. Числа приходят из спецификации — значит,
+   по ссылке у всех одна и та же картинка. */
+
+/** Палитра диаграмм: акцент и статусные цвета — они меняются вместе с темой */
+const HUES = ['var(--accent)', 'var(--pos)', 'var(--warn)', 'var(--neg)', 'var(--c3)', 'var(--accent-h)']
+const nfmt = (v: number) => (Math.abs(v) >= 1000 ? Math.round(v).toLocaleString('ru') : String(v))
+
+export function drawChart(kind: ChartKind, labels: string[], values: number[], unit: string) {
+  if (kind === 'donut') return drawDonut(labels, values, unit)
+  if (kind === 'bars') return drawBars(labels, values, unit)
+  return drawLine(labels, values, unit)
+}
+
+const axisTop = (max: number, unit: string) =>
+  `<div class="dch"><span>${esc(unit || '')}</span><b>${nfmt(max)}</b></div>`
+
+function drawBars(labels: string[], values: number[], unit: string) {
+  const max = Math.max(...values, 1)
+  const W = 100 / values.length
+  return `<div class="dchart">${axisTop(max, unit)}
+    <div class="dbars">${values.map((v, i) =>
+      `<div class="dbar" style="width:${W}%">
+        <span class="dv">${nfmt(v)}</span>
+        <i style="height:${Math.max(2, (v / max) * 100)}%;background:${HUES[0]}"></i>
+        <span class="dl">${esc(labels[i])}</span>
+      </div>`).join('')}</div></div>`
+}
+
+function drawLine(labels: string[], values: number[], unit: string) {
+  const max = Math.max(...values, 1), min = Math.min(...values, 0)
+  const W = 600, H = 180, PB = 4
+  const x = (i: number) => (values.length < 2 ? 0 : (i / (values.length - 1)) * W)
+  const y = (v: number) => H - PB - ((v - min) / (max - min || 1)) * (H - PB * 2)
+  const pts = values.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`)
+  return `<div class="dchart">${axisTop(max, unit)}
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="dline" aria-hidden="true">
+      <defs><linearGradient id="dg" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="var(--accent)" stop-opacity=".28"/>
+        <stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>
+      <path d="M${pts.join(' L')} L${W},${H} L0,${H} Z" fill="url(#dg)"/>
+      <polyline points="${pts.join(' ')}" fill="none" stroke="var(--accent)" stroke-width="2"
+        vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+    </svg>
+    <div class="dls">${labels.map((l) => `<span>${esc(l)}</span>`).join('')}</div></div>`
+}
+
+function drawDonut(labels: string[], values: number[], unit: string) {
+  const sum = values.reduce((a, b) => a + b, 0) || 1
+  const R = 60, C = 2 * Math.PI * R
+  let off = 0
+  const rings = values.map((v, i) => {
+    const len = (v / sum) * C
+    const seg = `<circle r="${R}" cx="80" cy="80" fill="none" stroke="${HUES[i % HUES.length]}"
+      stroke-width="26" stroke-dasharray="${len.toFixed(1)} ${(C - len).toFixed(1)}"
+      stroke-dashoffset="${(-off).toFixed(1)}" transform="rotate(-90 80 80)"/>`
+    off += len
+    return seg
+  }).join('')
+  return `<div class="dchart donut">
+    <svg viewBox="0 0 160 160" class="ddonut" aria-hidden="true">${rings}</svg>
+    <div class="dleg">${values.map((v, i) =>
+      `<span><i style="background:${HUES[i % HUES.length]}"></i>${esc(labels[i])}
+        <b>${nfmt(v)}${esc(unit ? ' ' + unit : '')}</b>
+        <em>${Math.round((v / sum) * 100)}%</em></span>`).join('')}</div></div>`
+}
+
+/* ===== данные =====
+
+   Числа для диаграмм и строки таблиц черновик придумывает сам, но не
+   случайно: зерно считается от названия раздела, поэтому одна и та же
+   просьба даёт одну и ту же картинку, а ссылка воспроизводится. */
+
+export function seedOf(s: string) {
+  let h = 2166136261
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) }
+  return h >>> 0
+}
+export function rnd(seed: number) {
+  let a = seed || 1
+  return () => {
+    a |= 0; a = (a + 0x6d2b79f5) | 0
+    let x = Math.imul(a ^ (a >>> 15), 1 | a)
+    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+const DAY = (n: number) => {
+  const d = new Date(2026, 1, 2 + n)
+  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+/** Категории для кольцевой диаграммы — по теме раздела */
+const SLICES: [RegExp, string[]][] = [
+  [/монет|доход|выплат|финанс/, ['BTC', 'LTC', 'DOGE', 'ZEC']],
+  [/воркер|парк|оборуд/, ['Активные', 'Низкий', 'Оффлайн']],
+  [/реферал|партн/, ['1 уровень', '2 уровень', '3 уровень']],
+  [/бонус|акци|промо/, ['Начислено', 'Использовано', 'Сгорело']],
+]
+/* По умолчанию делим по монетам: для майнинг-пула это самый естественный
+   разрез, и он честнее безликих «Доля A, B, C» */
+const SLICE_DEF = ['BTC', 'LTC', 'ZEC']
+
+/** Ряд чисел с подписями: по дням для линии и столбиков, по категориям
+    для кольца. Масштаб зависит от темы — деньги, хэшрейт или счёт. */
+export function genSeries(kind: ChartKind, topic: string, seed: number) {
+  const r = rnd(seed)
+  const low = topic.toLowerCase()
+  const money = /доход|выплат|финанс|бонус|сумма|платеж|платёж|реферал|партн/.test(low)
+  const hash = /хэшрейт|хешрейт|мощност|воркер/.test(low)
+  const base = money ? 40000 + Math.floor(r() * 60000) : hash ? 400 + Math.floor(r() * 600) : 40 + Math.floor(r() * 160)
+  const unit = money ? '₽' : hash ? 'TH/s' : ''
+  if (kind === 'donut') {
+    const labels = (SLICES.find(([re]) => re.test(low)) || [null, SLICE_DEF])[1]
+    return { labels, values: labels.map(() => Math.round(base * (0.3 + r()))), unit }
+  }
+  const n = CAPS.points
+  const values: number[] = []
+  let v = base
+  for (let i = 0; i < n; i++) {
+    v = Math.max(1, Math.round(v * (0.85 + r() * 0.35)))
+    values.push(v)
+  }
+  return { labels: Array.from({ length: n }, (_, i) => DAY(i)), values, unit }
+}
+
+/* Что подставлять в колонку таблицы — по её заголовку. Названия колонок
+   приходят от темы раздела, поэтому и содержимое получается правдоподобным. */
+const CELLS: [RegExp, (r: () => number, i: number) => string][] = [
+  [/дата|день|период/, (_r, i) => DAY(i)],
+  [/время/, (r) => `${String(8 + Math.floor(r() * 12)).padStart(2, '0')}:${String(Math.floor(r() * 60)).padStart(2, '0')}`],
+  [/сумма|доход|начислен|выплач|оборот|прибыл/, (r) => `${(10000 + Math.floor(r() * 90000)).toLocaleString('ru')} ₽`],
+  [/хэшрейт|хешрейт|мощност/, (r) => `${(100 + Math.floor(r() * 900))} TH/s`],
+  [/статус/, (r) => ['Завершён', 'В обработке', 'Отклонён'][Math.floor(r() * 3)]],
+  [/кошел|счет|счёт|адрес/, (r) => `1A1z****${String(Math.floor(r() * 9000) + 1000)}`],
+  [/реферал|партн|клиент|польз/, (r) => `ID ${Math.floor(r() * 9000) + 1000}`],
+  [/воркер|устройств/, (r) => `worker-${Math.floor(r() * 90) + 10}`],
+  [/монет|валют/, (r) => ['BTC', 'LTC', 'ZEC'][Math.floor(r() * 3)]],
+  [/бонус|акци|промо/, (r) => ['Приветственный', 'За объём', 'Реферальный'][Math.floor(r() * 3)]],
+  [/отч[её]т|документ/, (_r, i) => `Отчёт №${101 + i}`],
+  [/событи|операц|тип/, (r) => ['Начисление', 'Списание', 'Корректировка'][Math.floor(r() * 3)]],
+  [/уровен|тариф/, (r) => `${5 * (1 + Math.floor(r() * 5))}%`],
+  [/показател|метрик/, (r) => ['Хэшрейт', 'Доход', 'Реджект', 'Uptime'][Math.floor(r() * 4)]],
+]
+
+/** Строки таблицы по названиям колонок */
+export function genRows(cols: string[], n: number, seed: number) {
+  const r = rnd(seed)
+  return Array.from({ length: Math.min(n, CAPS.rows) }, (_, i) => cols.map((c) => {
+    const low = c.toLowerCase()
+    const hit = CELLS.find(([re]) => re.test(low))
+    return hit ? hit[1](r, i) : `${(100 + Math.floor(r() * 900))}`
+  }))
 }

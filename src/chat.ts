@@ -10,7 +10,8 @@ import {
   TOKENS, BASE, parseTune, tuneStr, tuneWarnings, valueOf, readable, contrast,
   darken, lighten, warmer, cooler,
 } from './theme'
-import { skeletonDraft, vetDraft, CAPS, type Draft, type Block } from './draft'
+import { genRows, genSeries, seedOf, skeletonDraft, vetDraft, CAPS,
+  type ChartKind, type Draft, type Block } from './draft'
 
 export interface ChatMsg { role: 'you' | 'bot'; text: string }
 
@@ -197,11 +198,13 @@ const MAKE = /^(новый|новая|новое|создай|сделай|до�
 const WHAT = /^(раздел|экран|страниц)/
 /* Блоки, которые можно назвать словом. Сравниваем по основе и допускаем
    одну опечатку: «диограмм» — это всё-таки диаграмма. */
-const KINDS: { stems: string[]; t: Block['t']; name: string; make: (n: number) => Block }[] = [
+const KINDS: { stems: string[]; t: Block['t']; name: string; make: (n: number, topic: string) => Block }[] = [
   { stems: ['таблиц', 'списк', 'строк'], t: 'table', name: 'Таблица',
-    make: () => ({ t: 'table', cols: ['Дата', 'Событие', 'Значение'], rows: [] }) },
-  { stems: ['график', 'диагр', 'чарт'], t: 'chart', name: 'График',
-    make: (n) => ({ t: 'chart', title: CHART_TITLES[n % CHART_TITLES.length] }) },
+    make: (n, topic) => table(['Дата', 'Событие', 'Значение'], topic, n) },
+  { stems: ['график', 'диагр', 'чарт', 'кругов', 'кольц', 'донат', 'столб', 'гистогр'], t: 'chart', name: 'График',
+    /* Каждый следующий график — другого вида и с другими числами:
+       «много разных диаграмм» должно давать именно разные. */
+    make: (n, topic) => chartOf(CHART_KINDS[n % CHART_KINDS.length], topic, n) },
   { stems: ['статис', 'показа', 'цифр', 'метрик', 'счетчи', 'счётчи'], t: 'stats', name: 'Показатели',
     make: () => ({ t: 'stats', items: [
       { label: 'Всего', value: '—' }, { label: 'За 24 ч', value: '—' },
@@ -215,9 +218,30 @@ const KINDS: { stems: string[]; t: Block['t']; name: string; make: (n: number) =
   { stems: ['текст', 'описан', 'абзац'], t: 'text', name: 'Текст',
     make: () => ({ t: 'text', text: 'Короткое пояснение к разделу.' }) },
 ]
-/* Несколько графиков подряд должны хотя бы называться по-разному:
-   компонент в дизайн-системе один, и различает их только подпись. */
-const CHART_TITLES = ['Динамика', 'Распределение', 'Сравнение', 'По дням', 'По монетам', 'По воркерам']
+const CHART_TITLES: Record<ChartKind, string[]> = {
+  line: ['Динамика', 'По дням', 'Тренд'],
+  bars: ['Сравнение', 'По периодам', 'Объём'],
+  donut: ['Распределение', 'Доли', 'Структура'],
+}
+const CHART_KINDS: ChartKind[] = ['line', 'bars', 'donut']
+/* Слова, по которым понятно, какую диаграмму просят */
+const CHART_WORDS: [RegExp, ChartKind][] = [
+  [/^(столб|бар|гистогр|колонк)/, 'bars'],
+  [/^(кругов|кольц|донат|пирог|дол[яи]|структур)/, 'donut'],
+  [/^(лини|кривая|тренд|динамик)/, 'line'],
+]
+
+/** График со своими числами: вид, подписи и значения уезжают в ссылку,
+    поэтому у всех, кто её откроет, диаграмма одна и та же. */
+function chartOf(kind: ChartKind, topic: string, n: number): Block {
+  const titles = CHART_TITLES[kind]
+  const { labels, values, unit } = genSeries(kind, topic, seedOf(topic + kind + n))
+  return { t: 'chart', kind, title: titles[n % titles.length], labels, values, unit }
+}
+/** Таблица с содержимым: строки считаются от названия колонок и темы */
+function table(cols: string[], topic: string, n = 0): Block {
+  return { t: 'table', cols, rows: genRows(cols, 5, seedOf(topic + cols.join() + n)) }
+}
 
 /* Одна опечатка не должна ронять разбор. Расстояние больше единицы —
    это уже другое слово, и угадывать мы не беремся. */
@@ -250,7 +274,10 @@ const RENAME = /^(переимен|назов|назван)/
     графика, а много разных диаграмм» — это сначала убрать, потом добавить
     три: слово-действие держится до следующего, а количество его меняет. */
 function planEdits(all: string[]) {
-  const plan: { kind: typeof KINDS[number]; del: boolean; n: number }[] = []
+  const plan: { kind: typeof KINDS[number]; del: boolean; n: number; want?: ChartKind }[] = []
+  /* «Столбиками», «кольцевую», «линию» — если вид назвали, берём его,
+     иначе чередуем, чтобы «много разных» и правда были разные */
+  const want = CHART_WORDS.find(([re]) => all.some((w) => re.test(w)))?.[1]
   let del = false, n = 1, used = false
   for (const w of all) {
     if (DEL_W.test(w)) { del = true; n = 1; used = false; continue }
@@ -265,7 +292,12 @@ function planEdits(all: string[]) {
     if (/^\d{1,2}$/.test(w)) { n = Math.min(+w, CAPS.blocks); continue }
     const kind = kindOf(w)
     if (!kind) continue
-    plan.push({ kind, del, n })
+    /* «Круговую диаграмму» — это два слова про один блок, а не два блока.
+       Пока не встретилось новое слово-действие, повтор того же вида
+       считаем уточнением, а не второй просьбой. */
+    const last = plan[plan.length - 1]
+    if (last && last.kind === kind && last.del === del && used) { last.n = Math.max(last.n, n); continue }
+    plan.push({ kind, del, n, want })
     used = true
     /* После удаления следующий блок в той же фразе — почти всегда замена */
     if (del) { del = false; n = 1 }
@@ -316,9 +348,10 @@ export function draftAnswer(q: string[], all: string[], raw: string, cur: Draft 
     const title = name[0].toUpperCase() + name.slice(1)
     const made = topicDraft(title)
     return {
-      say: `Собрал черновик «${title}»: ${made.blocks.map((b) => BLOCK_NAME[b.t].toLowerCase()).join(', ')}. `
-        + 'Содержимое — заготовка по названию: без модели придумывать цифры мне неоткуда. '
-        + 'Дальше скажите, что добавить, убрать или заменить.',
+      say: `Собрал черновик «${title}»: ${made.blocks.map(blockWord).join(', ')}. `
+        + 'Цифры и строки я насочинял по названию — они правдоподобные, но выдуманные, '
+        + 'и у всех, кто откроет ссылку, будут те же. Дальше скажите, что добавить, убрать или заменить: '
+        + '«добавь кольцевую», «убери столбики», «переименуй в …».',
       draft: made,
       chips: ['добавь вкладки', 'убери график', 'вместо таблицы кнопки'],
     }
@@ -331,7 +364,7 @@ function editDraft(cur: Draft, plan: ReturnType<typeof planEdits>): ChatAnswer {
   const blocks = [...cur.blocks]
   const said: string[] = []
   let full = false
-  for (const { kind, del, n } of plan) {
+  for (const { kind, del, n, want } of plan) {
     if (del) {
       let left = n, hit = 0
       for (let i = blocks.length - 1; i >= 0 && left > 0; i--) {
@@ -342,13 +375,15 @@ function editDraft(cur: Draft, plan: ReturnType<typeof planEdits>): ChatAnswer {
         : `«${kind.name.toLowerCase()}» в черновике и не было`)
       continue
     }
-    let made = 0
+    const names: string[] = []
     for (let i = 0; i < n; i++) {
       if (blocks.length >= CAPS.blocks) { full = true; break }
-      blocks.push(kind.make(blocks.filter((b) => b.t === kind.t).length))
-      made++
+      const idx = blocks.filter((b) => b.t === kind.t).length
+      const one = kind.t === 'chart' && want ? chartOf(want, cur.title, idx) : kind.make(idx, cur.title)
+      blocks.push(one)
+      names.push(blockWord(one))
     }
-    if (made) said.push(`добавил ${made > 1 ? made + ' × ' : ''}«${kind.name.toLowerCase()}»`)
+    if (names.length) said.push(`добавил ${names.map((x) => `«${x}»`).join(', ')}`)
   }
   if (!blocks.length) return { say: 'Так от раздела ничего не останется — оставил как было.' }
   /* Ничего не вышло — говорим об этом прямо, а не пустой репликой с точкой */
@@ -373,41 +408,43 @@ function editDraft(cur: Draft, plan: ReturnType<typeof planEdits>): ChatAnswer {
 /* Заготовки по теме названия. Придумать содержимое без модели неоткуда,
    но набор блоков и подписи для знакомых тем предсказать можно — это
    честный шаблон, а не выдумка: цифры остаются прочерками. */
-const TOPICS: [RegExp, () => Block[]][] = [
-  [/аналит|статис|метрик|дашборд/, () => [
+const TOPICS: [RegExp, (t: string) => Block[]][] = [
+  [/аналит|статис|метрик|дашборд/, (n) => [
     { t: 'stats', items: [
-      { label: 'Всего за период', value: '—' }, { label: 'За 24 ч', value: '—' },
-      { label: 'Среднее', value: '—' }, { label: 'Изменение', value: '—' }] },
-    { t: 'chart', title: 'Динамика' },
-    { t: 'chart', title: 'Распределение' },
-    { t: 'table', cols: ['Дата', 'Показатель', 'Значение'], rows: [] },
+      { label: 'Всего за период', value: '128 400 ₽' }, { label: 'За 24 ч', value: '6 210 ₽' },
+      { label: 'Среднее', value: '5 350 ₽' }, { label: 'Изменение', value: '+12%' }] },
+    chartOf('line', n, 0),
+    chartOf('bars', n, 1),
+    chartOf('donut', n, 2),
+    table(['Дата', 'Показатель', 'Значение'], n),
   ]],
-  [/бонус|акци|промо/, () => [
+  [/бонус|акци|промо/, (n) => [
     { t: 'stats', items: [
-      { label: 'Активных бонусов', value: '—' }, { label: 'Начислено', value: '—' },
-      { label: 'Использовано', value: '—' }] },
+      { label: 'Активных бонусов', value: '14' }, { label: 'Начислено', value: '86 200 ₽' },
+      { label: 'Использовано', value: '61 400 ₽' }] },
     { t: 'tabs', items: ['Активные', 'История'] },
-    { t: 'table', cols: ['Дата', 'Бонус', 'Статус', 'Сумма'], rows: [] },
+    chartOf('donut', n, 0),
+    table(['Дата', 'Бонус', 'Статус', 'Сумма'], n),
     { t: 'actions', items: ['Начислить бонус'] },
   ]],
-  [/реферал|партн/, () => [
+  [/реферал|партн/, (n) => [
     { t: 'stats', items: [
-      { label: 'Рефералов', value: '—' }, { label: 'Доход с рефералов', value: '—' },
-      { label: 'Уровень', value: '—' }] },
-    { t: 'chart', title: 'Доход по дням' },
-    { t: 'table', cols: ['Дата', 'Реферал', 'Хэшрейт', 'Начислено'], rows: [] },
+      { label: 'Рефералов', value: '37' }, { label: 'Доход с рефералов', value: '94 800 ₽' },
+      { label: 'Уровень', value: '15%' }] },
+    chartOf('line', n, 0),
+    table(['Дата', 'Реферал', 'Хэшрейт', 'Начислено'], n),
   ]],
-  [/отчет|отчёт|выгруз|документ/, () => [
+  [/отчет|отчёт|выгруз|документ/, (n) => [
     { t: 'tabs', items: ['Готовые', 'В работе'] },
-    { t: 'table', cols: ['Дата', 'Отчёт', 'Период', 'Статус'], rows: [] },
+    table(['Дата', 'Отчёт', 'Период', 'Статус'], n),
     { t: 'actions', items: ['Сформировать отчёт', 'Скачать'] },
   ]],
-  [/выплат|платеж|платёж|финанс/, () => [
+  [/выплат|платеж|платёж|финанс/, (n) => [
     { t: 'stats', items: [
-      { label: 'К выплате', value: '—' }, { label: 'Выплачено за месяц', value: '—' },
-      { label: 'Средняя выплата', value: '—' }] },
-    { t: 'chart', title: 'Выплаты по дням' },
-    { t: 'table', cols: ['Дата', 'Сумма', 'Кошелёк', 'Статус'], rows: [] },
+      { label: 'К выплате', value: '42 900 ₽' }, { label: 'Выплачено за месяц', value: '318 600 ₽' },
+      { label: 'Средняя выплата', value: '10 600 ₽' }] },
+    chartOf('bars', n, 0),
+    table(['Дата', 'Сумма', 'Кошелёк', 'Статус'], n),
   ]],
 ]
 
@@ -415,8 +452,13 @@ const TOPICS: [RegExp, () => Block[]][] = [
 export function topicDraft(title: string): Draft {
   const low = title.toLowerCase()
   const hit = TOPICS.find(([re]) => re.test(low))
-  return vetDraft({ title, blocks: hit ? hit[1]() : skeletonDraft(title).blocks })!
+  return vetDraft({ title, blocks: hit ? hit[1](title) : skeletonDraft(title).blocks })!
 }
+
+/* Диаграммы называем по виду: «график, график, график» ничего не говорит */
+const KIND_RU: Record<ChartKind, string> = { line: 'линия', bars: 'столбики', donut: 'кольцо' }
+const blockWord = (b: Block) =>
+  b.t === 'chart' && b.kind ? `диаграмма-${KIND_RU[b.kind]}` : BLOCK_NAME[b.t].toLowerCase()
 
 const BLOCK_NAME: Record<Block['t'], string> = {
   stats: 'Показатели', table: 'Таблица', chart: 'График',

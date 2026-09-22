@@ -36,7 +36,8 @@ export function buildCatalog(proto, theme, draft) {
   const draftBlocks = {
     stats: 'items: [{label, value, note?}] — плашки с показателями',
     table: 'cols: [заголовок], rows: [[ячейка]] — таблица дизайн-системы',
-    chart: 'title? — график хэшрейта из прототипа',
+    chart: 'title?, kind: line|bars|donut, labels: [подпись], values: [число], unit? — '
+      + 'диаграмма со своими данными; без values рисуется график хэшрейта из прототипа',
     empty: 'title, text? — пустое состояние с иллюстрацией',
     tabs: 'items: [название] — Segment Control',
     actions: 'items: [подпись] — кнопки (ничего не делают)',

@@ -18,7 +18,8 @@ const STY = (k: string) => AX_STYLE.has(k)
 const STY_N = AX_STYLE.size - 1
 /* Названия блоков черновика — для подписи в списке */
 const BLOCK_RU: Record<Block['t'], string> = {
-  stats: 'показатели', table: 'таблица', chart: 'график',
+  kpi: 'главное число', stats: 'показатели', table: 'таблица', chart: 'график',
+  list: 'рейтинг', feed: 'лента', callout: 'подсказка',
   empty: 'пустое состояние', tabs: 'вкладки', actions: 'кнопки', text: 'текст',
 }
 const blockWord = (n: number) => {

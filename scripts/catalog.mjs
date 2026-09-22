@@ -42,6 +42,10 @@ export function buildCatalog(proto, theme, draft) {
     tabs: 'items: [название] — Segment Control',
     actions: 'items: [подпись] — кнопки (ничего не делают)',
     text: 'title?, text — абзац текста',
+    kpi: 'label, value, note?, delta? — главное число экрана крупно',
+    list: 'title?, items: [{label, value, share?}] — рейтинг с полосами (share 0..100)',
+    feed: 'title?, items: [{time, text, tone?}] — лента событий (tone: ok|warn|err)',
+    callout: 'title?, text, tone? — плашка-подсказка',
   };
   return {
     axes, screens, modals, tokens, base: theme.BASE, baseDark: theme.BASE_DARK,

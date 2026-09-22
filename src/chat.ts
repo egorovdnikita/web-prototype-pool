@@ -10,7 +10,7 @@ import {
   TOKENS, BASE, parseTune, tuneStr, tuneWarnings, valueOf, readable, contrast,
   darken, lighten, warmer, cooler,
 } from './theme'
-import { genRows, genSeries, seedOf, skeletonDraft, vetDraft, CAPS,
+import { genFeed, genList, genRows, genSeries, seedOf, skeletonDraft, vetDraft, CAPS,
   type ChartKind, type Draft, type Block } from './draft'
 
 export interface ChatMsg { role: 'you' | 'bot'; text: string }
@@ -217,7 +217,51 @@ const KINDS: { stems: string[]; t: Block['t']; name: string; make: (n: number, t
     make: () => ({ t: 'tabs', items: ['Все', 'Активные', 'Завершённые'] }) },
   { stems: ['текст', 'описан', 'абзац'], t: 'text', name: 'Текст',
     make: () => ({ t: 'text', text: 'Короткое пояснение к разделу.' }) },
+  { stems: ['топ', 'рейтин', 'лидер', 'распред'], t: 'list', name: 'Рейтинг',
+    make: (n, topic) => ({ t: 'list', title: listTitle(topic), items: genList(topic, seedOf(topic + 'list' + n)) }) },
+  { stems: ['лент', 'событи', 'истори', 'журнал', 'активн'], t: 'feed', name: 'Лента событий',
+    make: (n, topic) => ({ t: 'feed', title: 'Последние события', items: genFeed(topic, seedOf(topic + 'feed' + n)) }) },
+  { stems: ['подсказ', 'плашк', 'баннер', 'пояснен', 'примечан'], t: 'callout', name: 'Подсказка',
+    make: (n, topic) => calloutOf(topic) },
+  { stems: ['главн', 'герой', 'кпи', 'kpi', 'итог'], t: 'kpi', name: 'Главное число',
+    make: (n, topic) => kpiOf(topic, seedOf(topic + 'kpi' + n)) },
 ]
+
+/** Заголовок рейтинга по теме: «Топ воркеров», «Доход по монетам» */
+const listTitle = (topic: string) => {
+  const low = topic.toLowerCase()
+  return /монет|доход|выплат|финанс/.test(low) ? 'Доход по монетам'
+    : /реферал|партн/.test(low) ? 'Топ рефералов'
+      : /бонус|акци|промо/.test(low) ? 'Бонусы по типам'
+        : /отч[её]т/.test(low) ? 'Отчёты по месяцам'
+          : 'Топ воркеров по хэшрейту'
+}
+/** Главное число раздела: берём последнюю точку ряда и дельту к прошлой */
+function kpiOf(topic: string, seed: number): Block {
+  const { values, unit } = genSeries('line', topic, seed)
+  const last = values[values.length - 1], prev = values[values.length - 2] || last
+  const d = Math.round(((last - prev) / (prev || 1)) * 100)
+  const sum = values.reduce((a, b) => a + b, 0)
+  return {
+    t: 'kpi',
+    label: unit === '₽' ? 'Доход за 8 дней' : unit ? 'Средний хэшрейт' : 'Всего за период',
+    value: `${sum.toLocaleString('ru')}${unit ? ' ' + unit : ''}`,
+    note: `За последние сутки ${last.toLocaleString('ru')}${unit ? ' ' + unit : ''}`,
+    delta: `${d >= 0 ? '+' : '−'}${Math.abs(d)}%`,
+  }
+}
+/** Подсказка по теме — то, что на настоящем экране объясняет правило */
+const CALLOUTS: [RegExp, string, string][] = [
+  [/выплат|финанс|платеж/, 'Автовыплата уходит раз в сутки при балансе выше порога. Порог меняется в настройках.', 'neu'],
+  [/реферал|партн/, 'Вознаграждение начисляется с комиссии пула, а не с дохода реферала.', 'neu'],
+  [/бонус|акци|промо/, 'Бонус сгорает через 30 дней после начисления, если его не использовать.', 'warn'],
+  [/отч[её]т|документ/, 'Отчёт формируется по данным на конец месяца и недоступен до его завершения.', 'neu'],
+  [/воркер|парк|монитор/, 'Воркер считается офлайн, если не присылал шары дольше 15 минут.', 'warn'],
+]
+const calloutOf = (topic: string): Block => {
+  const hit = CALLOUTS.find(([re]) => re.test(topic.toLowerCase()))
+  return { t: 'callout', text: hit ? hit[1] : 'Данные в разделе обновляются раз в пять минут.', tone: hit ? hit[2] : 'neu' }
+}
 const CHART_TITLES: Record<ChartKind, string[]> = {
   line: ['Динамика', 'По дням', 'Тренд'],
   bars: ['Сравнение', 'По периодам', 'Объём'],
@@ -429,43 +473,73 @@ function editDraft(cur: Draft, plan: ReturnType<typeof planEdits>): ChatAnswer {
 /* Заготовки по теме названия. Придумать содержимое без модели неоткуда,
    но набор блоков и подписи для знакомых тем предсказать можно — это
    честный шаблон, а не выдумка: цифры остаются прочерками. */
+/* Состав страницы по теме. Это не «набор блоков», а композиция экрана:
+   сверху главное число, под ним разрез по показателям, дальше динамика
+   и рейтинг рядом, ниже — детали таблицей и лента, в конце правило.
+   Так устроены настоящие разделы прототипа, и черновик должен читаться
+   так же, иначе он остаётся наброском. */
 const TOPICS: [RegExp, (t: string) => Block[]][] = [
-  [/аналит|статис|метрик|дашборд/, (n) => [
+  [/аналит|статис|метрик|дашборд|сводк/, (n) => [
+    kpiOf(n, seedOf(n + 'kpi0')),
     { t: 'stats', items: [
-      { label: 'Всего за период', value: '128 400 ₽' }, { label: 'За 24 ч', value: '6 210 ₽' },
-      { label: 'Среднее', value: '5 350 ₽' }, { label: 'Изменение', value: '+12%' }] },
+      { label: 'Доход за 24 ч', value: '6 210 ₽', note: '+12%' },
+      { label: 'Средний хэшрейт', value: '512 TH/s' },
+      { label: 'Активных воркеров', value: '1 398' },
+      { label: 'Реджект', value: '0,42%', note: '−3%' }] },
+    { t: 'tabs', items: ['Доход', 'Хэшрейт', 'Воркеры'] },
     chartOf('line', n, 0),
-    chartOf('bars', n, 1),
-    chartOf('donut', n, 2),
-    table(['Дата', 'Показатель', 'Значение'], n),
+    { t: 'list', title: 'Топ воркеров по хэшрейту', items: genList(n, seedOf(n + 'list0')) },
+    chartOf('donut', n, 1),
+    table(['Дата', 'Показатель', 'Значение'], n, 0, 'Показатели по дням'),
+    calloutOf(n),
   ]],
   [/бонус|акци|промо/, (n) => [
     { t: 'stats', items: [
-      { label: 'Активных бонусов', value: '14' }, { label: 'Начислено', value: '86 200 ₽' },
+      { label: 'Активных бонусов', value: '14' },
+      { label: 'Начислено', value: '86 200 ₽', note: '+8%' },
       { label: 'Использовано', value: '61 400 ₽' }] },
-    { t: 'tabs', items: ['Активные', 'История'] },
-    chartOf('donut', n, 0),
-    table(['Дата', 'Бонус', 'Статус', 'Сумма'], n),
-    { t: 'actions', items: ['Начислить бонус'] },
+    { t: 'tabs', items: ['Активные', 'История', 'Сгоревшие'] },
+    { t: 'list', title: 'Бонусы по типам', items: genList(n, seedOf(n + 'list0')) },
+    table(['Дата', 'Бонус', 'Статус', 'Сумма'], n, 0, 'Начисления'),
+    { t: 'feed', title: 'Последние события', items: genFeed(n, seedOf(n + 'feed0')) },
+    { t: 'actions', items: ['Начислить бонус', 'Правила программы'] },
+    calloutOf(n),
   ]],
   [/реферал|партн/, (n) => [
+    kpiOf(n, seedOf(n + 'kpi0')),
     { t: 'stats', items: [
-      { label: 'Рефералов', value: '37' }, { label: 'Доход с рефералов', value: '94 800 ₽' },
+      { label: 'Рефералов', value: '37', note: '+4' },
+      { label: 'Активных', value: '29' },
       { label: 'Уровень', value: '15%' }] },
     chartOf('line', n, 0),
-    table(['Дата', 'Реферал', 'Хэшрейт', 'Начислено'], n),
+    { t: 'list', title: 'Топ рефералов', items: genList(n, seedOf(n + 'list0')) },
+    table(['Дата', 'Реферал', 'Хэшрейт', 'Начислено'], n, 0, 'Начисления по рефералам'),
+    calloutOf(n),
   ]],
   [/отчет|отчёт|выгруз|документ/, (n) => [
-    { t: 'tabs', items: ['Готовые', 'В работе'] },
-    table(['Дата', 'Отчёт', 'Период', 'Статус'], n),
-    { t: 'actions', items: ['Сформировать отчёт', 'Скачать'] },
+    { t: 'stats', items: [
+      { label: 'Готовых отчётов', value: '11' },
+      { label: 'В работе', value: '1' },
+      { label: 'С ошибками', value: '2' }] },
+    { t: 'tabs', items: ['Готовые', 'В работе', 'С ошибками'] },
+    table(['Дата', 'Отчёт', 'Период', 'Статус'], n, 0, 'Отчёты'),
+    { t: 'feed', title: 'История формирования', items: genFeed(n, seedOf(n + 'feed0')) },
+    { t: 'actions', items: ['Сформировать отчёт', 'Скачать все'] },
+    calloutOf(n),
   ]],
   [/выплат|платеж|платёж|финанс/, (n) => [
+    kpiOf(n, seedOf(n + 'kpi0')),
     { t: 'stats', items: [
-      { label: 'К выплате', value: '42 900 ₽' }, { label: 'Выплачено за месяц', value: '318 600 ₽' },
-      { label: 'Средняя выплата', value: '10 600 ₽' }] },
+      { label: 'К выплате', value: '42 900 ₽' },
+      { label: 'Выплачено за месяц', value: '318 600 ₽', note: '+6%' },
+      { label: 'Средняя выплата', value: '10 600 ₽' },
+      { label: 'Отклонено', value: '2' }] },
+    { t: 'tabs', items: ['Все', 'Автовыплаты', 'Ручные'] },
     chartOf('bars', n, 0),
-    table(['Дата', 'Сумма', 'Кошелёк', 'Статус'], n),
+    { t: 'list', title: 'Доход по монетам', items: genList(n, seedOf(n + 'list0')) },
+    table(['Дата', 'Сумма', 'Кошелёк', 'Статус'], n, 0, 'История выплат'),
+    { t: 'feed', title: 'Последние события', items: genFeed(n, seedOf(n + 'feed0')) },
+    calloutOf(n),
   ]],
 ]
 
@@ -473,7 +547,18 @@ const TOPICS: [RegExp, (t: string) => Block[]][] = [
 export function topicDraft(title: string): Draft {
   const low = title.toLowerCase()
   const hit = TOPICS.find(([re]) => re.test(low))
-  return vetDraft({ title, blocks: hit ? hit[1](title) : skeletonDraft(title).blocks })!
+  if (hit) return vetDraft({ title, blocks: hit[1](title) })!
+  /* Незнакомая тема — та же композиция, только подписи общие */
+  const seed = seedOf(title)
+  return vetDraft({ title, blocks: [
+    kpiOf(title, seed),
+    ...skeletonDraft(title).blocks.filter((b) => b.t === 'stats'),
+    chartOf('line', title, 0),
+    { t: 'list', title: listTitle(title), items: genList(title, seedOf(title + 'list')) },
+    table(['Дата', 'Событие', 'Значение'], title, 0, 'Последние записи'),
+    { t: 'feed', title: 'Лента событий', items: genFeed(title, seedOf(title + 'feed')) },
+    calloutOf(title),
+  ] })!
 }
 
 /* Диаграммы называем по виду: «график, график, график» ничего не говорит */
@@ -482,7 +567,8 @@ const blockWord = (b: Block) =>
   b.t === 'chart' && b.kind ? `диаграмма-${KIND_RU[b.kind]}` : BLOCK_NAME[b.t].toLowerCase()
 
 const BLOCK_NAME: Record<Block['t'], string> = {
-  stats: 'Показатели', table: 'Таблица', chart: 'График',
+  kpi: 'Главное число', stats: 'Показатели', table: 'Таблица', chart: 'График',
+  list: 'Рейтинг', feed: 'Лента событий', callout: 'Подсказка',
   empty: 'Пустое состояние', tabs: 'Вкладки', actions: 'Кнопки', text: 'Текст',
 }
 

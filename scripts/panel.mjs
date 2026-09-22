@@ -381,6 +381,24 @@ run('открыта модалка', { ...DEF }, ui(), { modal: 'export' }, (htm
     fail('не все виды диаграмм нарисовались');
   if (drawn.includes('<b>01</b>')) fail('подпись диаграммы не экранирована');
   if (!drawn.includes('70%') || !drawn.includes('30%')) fail('в кольце нет долей');
+  /* Новые блоки: герой, рейтинг, лента и подсказка — со своей разметкой
+     и с экранированием, как у всех остальных */
+  const rich = D.renderDraft(D.vetDraft({ title: 'Р', blocks: [
+    { t: 'kpi', label: 'Доход', value: '128 400 ₽', note: 'За сутки 6 210 ₽', delta: '+12%' },
+    { t: 'list', title: 'Топ', items: [{ label: '<b>w1</b>', value: '300 TH/s', share: 60 }] },
+    { t: 'feed', title: 'События', items: [{ time: '02.02 10:00', text: 'Выплата ушла', tone: 'ok' }] },
+    { t: 'callout', text: 'Порог выплаты — 0,001 BTC', tone: 'warn' }] }), m);
+  if (!rich.includes('dhero') || !rich.includes('dlist') || !rich.includes('dfeed') || !rich.includes('dcallout'))
+    fail('новые блоки не нарисовались');
+  if (rich.includes('<b>w1</b>')) fail('подпись рейтинга не экранирована');
+  if (!rich.includes('class="dyn teal"')) fail('дельта героя не стала бейджем');
+  /* Ссылка с короткими ключами читается обратно без потерь */
+  const richSpec = D.vetDraft({ title: 'Р', blocks: [
+    { t: 'kpi', label: 'Доход', value: '1 ₽', delta: '+1%' },
+    { t: 'feed', items: [{ time: '01.02', text: 'Событие', tone: 'ok' }] }] });
+  if (JSON.stringify(D.decodeDraft(D.encodeDraft(richSpec))) !== JSON.stringify(richSpec))
+    fail('новые блоки не пережили ссылку');
+  if (D.encodeDraft(richSpec).includes('title')) fail('ключи в ссылке не сокращены');
   /* Статусы в таблице — плашки дизайн-системы, а не голый текст */
   if (!html.includes('class="status ok')) fail('статус в таблице не стал плашкой');
   /* Дельта показателя — бейдж, а не строчка текста */
@@ -418,9 +436,10 @@ run('открыта модалка', { ...DEF }, ui(), { modal: 'export' }, (htm
     if (b.labels.length !== b.values.length) fail('подписи не сошлись с числами');
   }
   /* Названный вид диаграммы: «круговую» — это кольцо, и одно, а не два */
-  const donut = dr('добавь круговую диаграмму', dr('новый раздел Сводка'));
-  const added2 = donut.blocks.filter((b) => b.t === 'chart' && b.kind === 'donut');
-  if (added2.length !== 1) fail(`«круговую диаграмму» дало ${added2.length} колец`);
+  const beforeD = dr('новый раздел Сводка');
+  const donut = dr('добавь круговую диаграмму', beforeD);
+  const rings = (d) => d.blocks.filter((b) => b.t === 'chart' && b.kind === 'donut').length;
+  if (rings(donut) !== rings(beforeD) + 1) fail(`«круговую диаграмму» дало ${rings(donut) - rings(beforeD)} колец`);
   /* Таблицы приходят с содержимым, а не пустые */
   const filled = dr('новый раздел Выплаты');
   const tbl = filled.blocks.find((b) => b.t === 'table');
@@ -459,6 +478,23 @@ run('открыта модалка', { ...DEF }, ui(), { modal: 'export' }, (htm
   const badAi = vetAnswer({ say: 'Собрал', draft: { title: 'X', blocks: [{ t: 'iframe' }] } }, { ...DEF }, false);
   if (badAi.answer.draft) fail('негодный черновик от модели принят');
   if (!badAi.dropped.length) fail('про отброшенный черновик не сказали');
+
+  /* Композиция: знакомая тема даёт проработанный экран, а не список блоков */
+  const pay = dr('сделай раздел Выплаты');
+  for (const need of ['kpi', 'stats', 'table', 'feed', 'callout']) {
+    if (!pay.blocks.some((b) => b.t === need)) fail(`в разделе «Выплаты» нет блока ${need}`);
+  }
+  if (pay.blocks.length < 7) fail(`экран из ${pay.blocks.length} блоков — это всё ещё набросок`);
+  if (D.draftSize(pay) > D.CAPS.link) fail('проработанный экран не влезает в ссылку');
+  /* Рейтинг и лента приходят с данными, а не пустыми */
+  const rank = pay.blocks.find((b) => b.t === 'list');
+  if (!rank.items.every((i) => i.label && i.value && typeof i.share === 'number'))
+    fail('в рейтинге нет значений или долей');
+  const feed = pay.blocks.find((b) => b.t === 'feed');
+  if (!feed.items.every((i) => i.time && i.text)) fail('в ленте нет времени или текста');
+  /* Незнакомая тема — та же композиция, а не голый каркас */
+  const other = dr('новый раздел Прошивки');
+  if (other.blocks.length < 6) fail('незнакомая тема осталась каркасом');
 
   const withDrafts = run('«Переходы» с черновиками', { ...DEF }, ui({ sctab: 'go' }), {
     drafts: [D.vetDraft(good)], draft: D.vetDraft(good),

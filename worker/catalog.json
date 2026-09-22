@@ -1240,11 +1240,15 @@
   "empty": "title, text? — пустое состояние с иллюстрацией",
   "tabs": "items: [название] — Segment Control",
   "actions": "items: [подпись] — кнопки (ничего не делают)",
-  "text": "title?, text — абзац текста"
+  "text": "title?, text — абзац текста",
+  "kpi": "label, value, note?, delta? — главное число экрана крупно",
+  "list": "title?, items: [{label, value, share?}] — рейтинг с полосами (share 0..100)",
+  "feed": "title?, items: [{time, text, tone?}] — лента событий (tone: ok|warn|err)",
+  "callout": "title?, text, tone? — плашка-подсказка"
  },
  "draftCaps": {
   "title": 48,
-  "blocks": 6,
+  "blocks": 9,
   "text": 160,
   "label": 32,
   "value": 24,
@@ -1254,9 +1258,11 @@
   "cell": 24,
   "tabs": 4,
   "actions": 3,
+  "listn": 5,
+  "feedn": 5,
   "points": 8,
   "plabel": 10,
   "unit": 8,
-  "link": 1800
+  "link": 3500
  }
 }

@@ -2268,6 +2268,37 @@ html{scrollbar-gutter:stable}
 .dleg i{width:10px;height:10px;border-radius:var(--r-f);flex:0 0 auto}
 .dleg b{color:var(--c1);font-weight:600}
 .dleg em{font-style:normal;color:var(--c3)}
+/* Рейтинг, лента и плашка-подсказка — блоки, которых в дизайн-системе
+   нет, но без которых дашборд выглядит недоделанным. Собраны на её
+   токенах, живут только в черновике. */
+.dhero{margin:0}
+.statcard .stcol{min-width:0}
+.statcard .stcol .n{white-space:nowrap}
+.statcard .stdelta{margin-top:6px}
+.dlist{display:flex;flex-direction:column;gap:var(--sp3)}
+.drow{display:flex;align-items:center;gap:var(--sp3);font-size:var(--fs-s);line-height:var(--lh-s)}
+.drow .dn{width:20px;flex:0 0 auto;color:var(--c3);font-weight:600;text-align:right}
+.drow .dnm{flex:0 0 30%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.dbarline{flex:1;min-width:40px;height:8px;border-radius:var(--r-f);background:var(--ctrl2);overflow:hidden}
+.dbarline i{display:block;height:100%;border-radius:var(--r-f);background:var(--accent)}
+.drow b{flex:0 0 auto;font-weight:600}
+.drow em{flex:0 0 auto;font-style:normal;color:var(--c3);min-width:40px;text-align:right}
+.dfeed{display:flex;flex-direction:column}
+.dfrow{display:flex;align-items:center;gap:var(--sp3);padding:10px 0;border-bottom:1px solid var(--border);
+  font-size:var(--fs-s);line-height:var(--lh-s)}
+.dfrow:last-child{border-bottom:0;padding-bottom:0}
+.dfrow i{width:8px;height:8px;border-radius:var(--r-f);flex:0 0 auto;background:var(--neu)}
+.dfrow i.ok{background:var(--pos)}.dfrow i.warn{background:var(--warn)}.dfrow i.err{background:var(--neg)}
+.dfrow .dft{color:var(--c3);flex:0 0 auto}
+.dfrow .dfx{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dcallout{display:flex;gap:var(--sp3);padding:var(--sp4);border-radius:var(--r-l);
+  background:var(--accent-ghost);color:var(--c2);font-size:var(--fs-s);line-height:var(--lh-s)}
+.dcallout.warn{background:var(--warn-sub)}.dcallout.err{background:var(--neg-sub)}
+.dcallout.ok{background:var(--pos-sub)}
+.dcallout i{flex:0 0 auto;color:var(--accent);display:grid;place-items:center}
+.dcallout.warn i{color:var(--warn)}.dcallout.err i{color:var(--neg)}.dcallout.ok i{color:var(--pos)}
+.dcallout svg{width:20px;height:20px}
+.dcallout b{display:block;color:var(--c1);margin-bottom:2px}
 /* Черновой раздел: в сайдбаре с пометкой, на экране — с плашкой сверху.
    Он не сверялся с макетами, и по нему это должно быть видно сразу. */
 .draftni .lbl{display:flex;align-items:center;gap:6px}

@@ -17,14 +17,16 @@
      из другого мира;
    - всё, что пришло снаружи, экранируется: черновик приезжает по ссылке,
      а ссылка — это чужой ввод. */
-import { card, chart, emptyBox, seg, status, type Model } from '@/legacy/prototype'
+import {
+  I, card, chart, dayChips, dyn, emptyBox, fsel, pager, segi, segLine, status, type Model,
+} from '@/legacy/prototype'
 
 /** Виды диаграмм, которые черновик рисует сам */
 export type ChartKind = 'line' | 'bars' | 'donut'
 
 export type Block =
   | { t: 'stats'; items: { label: string; value: string; note?: string }[] }
-  | { t: 'table'; cols: string[]; rows: string[][] }
+  | { t: 'table'; title?: string; cols: string[]; rows: string[][] }
   /* Без values это старый блок — график хэшрейта из прототипа. С values
      черновик рисует свою диаграмму: подписи и числа лежат в спецификации,
      поэтому по ссылке у всех одно и то же, а не случайные цифры. */
@@ -82,7 +84,7 @@ export function vetDraft(raw: unknown): Draft | null {
         const rows = list(b.rows).slice(0, CAPS.rows)
           .map((row) => list(row).slice(0, cols.length).map((c) => clip(c, CAPS.cell)))
           .filter((row) => row.some(Boolean))
-        blocks.push({ t: 'table', cols, rows })
+        blocks.push({ t: 'table', title: clip(b.title, CAPS.label), cols, rows })
         break
       }
       case 'chart': {
@@ -170,48 +172,131 @@ export const esc = (s: string) => s.replace(/[&<>"']/g, (c) =>
 
 const head = (t: string) => (t ? `<div class="ch"><h2>${esc(t)}</h2></div>` : '')
 
-/** Спецификация → разметка из блоков дизайн-системы */
+/* Настоящие экраны прототипа устроены плотнее голого списка блоков:
+   у карточки есть шапка с заголовком и контролами, у таблицы — фильтр,
+   статусы и пагинация, у показателей — иконка и дельта. Черновик
+   собирается по тем же правилам, иначе он выглядит наброском, даже когда
+   данные в нём осмысленные. */
+
+/** Иконка показателя по смыслу подписи */
+const STAT_ICO: [RegExp, string, string][] = [
+  [/изменен|рост|динамик|прирост/, 'bars', 'var(--pos)'],
+  [/хэшрейт|хешрейт|мощност/, 'monitor', 'var(--accent)'],
+  [/воркер|устройств|оборуд/, 'pc', 'var(--accent)'],
+  [/реферал|партн|клиент|польз/, 'ref', 'var(--warn)'],
+  [/бонус|акци|промо/, 'pie', 'var(--warn)'],
+  [/доход|сумм|выплач|прибыл|баланс|₽|\$/, 'wallet', 'var(--pos)'],
+  [/период|дата|срок|время|сутк|24 ч/, 'clock', 'var(--accent)'],
+]
+/* Смотрим и на подпись, и на значение: «Всего за период» без значения
+   выглядит как про время, а «128 400 ₽» сразу говорит, что это деньги */
+const statIco = (label: string, value: string) => {
+  const s = (label + ' ' + value).toLowerCase()
+  const hit = STAT_ICO.find(([re]) => re.test(s))
+  const [, name, color] = hit || [null, 'bars', 'var(--accent)']
+  return { html: I[name] || I.bars, color }
+}
+
+/* Значение вида «+12%» или «−8%» — это дельта, её место на бейдже */
+const DELTA = /^[+\-−]\d+([.,]\d+)?\s*%$/
+/* Числовые ячейки в таблицах прототипа прижаты вправо и набраны mono */
+const NUMCELL = /^[+\-−]?[\d\s.,]+(%|₽|\$|TH\/s|GH\/s)?$/
+/* Дата тоже состоит из цифр, но в таблицах прототипа она слева */
+const DATECELL = /^\d{2}[.:]\d{2}(\.\d{2,4})?$/
+const isNum = (v: string) => NUMCELL.test(v) && !DATECELL.test(v)
+const ST_PILL: [RegExp, 'ok' | 'warn' | 'err' | 'off'][] = [
+  [/заверш|готов|активн|успеш|выплач/i, 'ok'],
+  [/обработ|ожид|в работе|генерир/i, 'warn'],
+  [/отклон|ошибк|сбой|отмен/i, 'err'],
+]
+
+/** Шапка карточки: заголовок слева, контролы справа — как на экранах */
+const cardHead = (title: string, right = '') =>
+  `<div class="ch"><h2>${esc(title)}</h2>${right ? `<div class="spacer"></div>${right}` : ''}</div>`
+
+/** Спецификация → разметка: блоки дизайн-системы плюс свои диаграммы */
 export function renderDraft(d: Draft, m: Model): string {
   const out = d.blocks.map((b, i) => {
     switch (b.t) {
       case 'stats':
-        return card(`<div class="grid g4" style="gap:var(--sp4);margin:0">${b.items.map((s) =>
-          `<div class="statcard"><div><div class="cap">${esc(s.label)}</div>`
-          + `<div class="n mono">${esc(s.value)}</div></div>`
-          + `${s.note ? `<div class="cap">${esc(s.note)}</div>` : ''}</div>`).join('')}</div>`)
-      case 'table':
-        return card(`<div class="tw"><table class="tbl"><thead><tr>${b.cols.map((c) =>
-          `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${b.rows.map((r) =>
-          `<tr>${b.cols.map((_, j) => `<td class="mono">${esc(r[j] || '—')}</td>`).join('')}</tr>`).join('')
-          || `<tr><td colspan="${b.cols.length}">${emptyBox('Пока пусто', 'Данных для этой таблицы ещё нет')}</td></tr>`
-          }</tbody></table></div>`)
-      case 'chart':
-        /* Своя диаграмма, если в спецификации есть числа; иначе — график
-           хэшрейта из прототипа, как было в первых черновиках */
-        return card(`${head(b.title || 'График')}${b.values && b.labels
-          ? drawChart(b.kind || 'line', b.labels, b.values, b.unit || '')
-          : chart(m)}`)
+        /* Сетка под число показателей: три карточки в ряду на четыре
+           колонки оставляли дырку справа — на экранах прототипа так не бывает */
+        return `<div class="grid g${Math.min(4, Math.max(2, b.items.length))}" style="gap:var(--sp4);margin:0">${b.items.map((s) => {
+          const ico = statIco(s.label, s.value)
+          /* «+12%» — это дельта, а не значение: у прототипа для неё бейдж */
+          const vd = DELTA.test(s.value)
+          const nd = !!s.note && DELTA.test(s.note)
+          const badge = (v: string) => dyn(/^[-−]/.test(v) ? 'neg' : 'ok', esc(v.replace(/^[+\-−]/, '')))
+          return `<div class="statcard"><div><div class="cap">${esc(s.label)}</div>`
+            + `${vd ? badge(s.value) : `<div class="n mono">${esc(s.value)}</div>`}`
+            + `${s.note && !nd ? `<div class="cap" style="margin:4px 0 0">${esc(s.note)}</div>` : ''}</div>`
+            + `${nd ? badge(s.note!) : ''}`
+            + `<div class="ic" style="background:color-mix(in srgb, ${ico.color} 16%, transparent);color:${ico.color}">`
+            + `${ico.html}</div></div>`
+        }).join('')}</div>`
+      case 'table': {
+        const id = `draft-tbl-${i}`
+        /* Фильтр по статусу — не украшение: он и правда режет строки */
+        const stCol = b.cols.findIndex((c) => /статус/i.test(c))
+        const opts = stCol >= 0
+          ? ['Все статусы', ...new Set(b.rows.map((r) => r[stCol]).filter(Boolean))]
+          : []
+        const pick = opts.length ? segi(`${id}-st`, 0) : 0
+        const rows = stCol >= 0 && pick > 0 ? b.rows.filter((r) => r[stCol] === opts[pick]) : b.rows
+        const right = `${opts.length > 1 ? fsel(`${id}-st`, opts) : ''}${dayChips(`${id}-days`, 1)}`
+          + `<button class="ib" data-toast="Экспорт — это черновик, кнопка ничего не делает">${I.dl}</button>`
+        return card(`${cardHead(b.title || 'Данные', right)}`
+          + (rows.length
+            ? `<div class="tw"><table class="tbl"><thead><tr>${b.cols.map((c, j) =>
+              `<th${j && isNum(rows[0][j] || '') ? ' class="num"' : ''}>${esc(c)}</th>`).join('')}`
+              + `</tr></thead><tbody>${rows.map((r) => `<tr>${b.cols.map((_, j) => {
+                const v = r[j] || '—'
+                const st = ST_PILL.find(([re]) => re.test(v))
+                if (st) return `<td>${status(st[1], esc(v))}</td>`
+                return isNum(v)
+                  ? `<td class="num mono">${esc(v)}</td>`
+                  : `<td class="${DATECELL.test(v) ? 'mono' : ''}">${esc(v)}</td>`
+              }).join('')}</tr>`).join('')}</tbody></table></div>`
+              + pager(id, rows.length, 10)
+            : emptyBox('Пока пусто', 'Данных для этой таблицы ещё нет')))
+      }
+      case 'chart': {
+        if (!b.values || !b.labels) return card(`${cardHead(b.title || 'График', zoomless())}${chart(m)}`)
+        const id = `draft-ch-${i}`
+        /* Чипы периода реально режут ряд, а не просто подсвечиваются */
+        const cut = [Math.max(2, Math.ceil(b.values.length / 2)), b.values.length, b.values.length][segi(`${id}-days`, 1)]
+        const labels = b.kind === 'donut' ? b.labels : b.labels.slice(-cut)
+        const values = b.kind === 'donut' ? b.values : b.values.slice(-cut)
+        const right = b.kind === 'donut' ? zoomless() : `${dayChips(`${id}-days`, 1)}${zoomless()}`
+        return card(`${cardHead(b.title || 'График', right)}`
+          + drawChart(b.kind || 'line', labels, values, b.unit || ''))
+      }
       case 'empty':
-        return card(emptyBox(esc(b.title), esc(b.text || '')))
+        return card(`${cardHead(b.title)}${emptyBox(esc(b.title), esc(b.text || ''))}`)
       case 'tabs':
-        return card(seg(`draft-${i}`, b.items.map(esc)))
+        return `<div class="row" style="margin:0">${segLine(`draft-${i}`, b.items.map(esc), 0, 'fill')}</div>`
       case 'actions':
-        return card(`<div class="row" style="gap:var(--sp2)">${b.items.map((a, j) =>
-          `<button class="btn ${j ? 'out' : ''}" data-toast="${esc(a)} — это черновик, кнопка ничего не делает">`
-          + `${esc(a)}</button>`).join('')}</div>`)
+        return card(`${cardHead('Действия',
+          b.items.map((a, j) => `<button class="btn ${j ? 'out' : ''}" `
+            + `data-toast="${esc(a)} — это черновик, кнопка ничего не делает">${esc(a)}</button>`).join(''))}`)
       case 'text':
-        return card(`${head(b.title || '')}<p class="bs">${esc(b.text)}</p>`)
+        return card(`${b.title ? cardHead(b.title) : ''}<p class="bs" style="color:var(--c2)">${esc(b.text)}</p>`)
       default:
         return ''
     }
   })
-  /* Плашка сверху — чтобы черновик никогда не приняли за сверенный экран */
-  const note = card(`<div class="ch"><h2>${esc(d.title)}</h2>`
-    + `${status('warn', 'Черновик')}</div>`
-    + '<p class="bs">Это не раздел продукта: он собран в чате из блоков дизайн-системы '
-    + 'и не сверялся с макетами. Живёт в вашей ссылке.</p>', 'draftnote')
+  /* Полоса сверху — тонкая, чтобы не съедать первый экран, но заметная:
+     черновик никогда не должен сойти за сверенный раздел. */
+  const note = `<div class="draftbar">${status('warn', 'Черновик')}`
+    + '<span>Собран в чате из блоков дизайн-системы. С макетами не сверялся, '
+    + 'данные выдуманы — живёт в вашей ссылке.</span>'
+    + '<button class="btn link" data-panel>Изменить в чате</button></div>'
   return note + out.join('')
 }
+
+/* Кнопка-иконка «ещё» в шапке карточки: на экранах прототипа у каждой
+   карточки справа есть хоть один контрол, без него шапка выглядит пустой */
+const zoomless = () => `<button class="ib" data-toast="Меню карточки — это черновик">${I.dots}</button>`
 
 /** Локальная заготовка: без модели придумать содержимое неоткуда, но
     каркас раздела собрать можно — дальше он правится фразами или руками. */
@@ -230,7 +315,8 @@ export function skeletonDraft(title: string): Draft {
         { label: 'Изменение', value: (r() > 0.5 ? '+' : '−') + (1 + Math.floor(r() * 20)) + '%' },
       ] },
       { t: 'chart', kind: 'line', title: 'Динамика', ...line },
-      { t: 'table', cols: ['Дата', 'Событие', 'Значение'], rows: genRows(['Дата', 'Событие', 'Значение'], 5, seed) },
+      { t: 'table', title: 'Последние события', cols: ['Дата', 'Событие', 'Значение'],
+        rows: genRows(['Дата', 'Событие', 'Значение'], 5, seed) },
     ],
   }
 }
@@ -253,37 +339,70 @@ export function drawChart(kind: ChartKind, labels: string[], values: number[], u
   return drawLine(labels, values, unit)
 }
 
-const axisTop = (max: number, unit: string) =>
-  `<div class="dch"><span>${esc(unit || '')}</span><b>${nfmt(max)}</b></div>`
+/* Круглый потолок шкалы: 87 → 100, 41 743 → 50 000. Без него подписи
+   на оси выглядят случайными числами, как в наспех сделанном макете. */
+function niceMax(v: number) {
+  if (v <= 0) return 1
+  const p = 10 ** Math.floor(Math.log10(v))
+  const n = v / p
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p
+}
+/** Ось значений слева и линии сетки — как на графиках прототипа */
+function axis(max: number, unit: string) {
+  const ticks = [1, 0.75, 0.5, 0.25, 0]
+  return {
+    col: `<div class="dax">${ticks.map((k) =>
+      `<span>${nfmt(Math.round(max * k))}</span>`).join('')}</div>`,
+    grid: `<div class="dgridlines">${ticks.map(() => '<i></i>').join('')}</div>`,
+    unit: unit ? `<span class="dunit">${esc(unit)}</span>` : '',
+  }
+}
+/** Подпись ряда под диаграммой: цвет, название, единица */
+const legend = (name: string, unit: string) =>
+  `<div class="dleg row"><span><i style="background:${HUES[0]}"></i>${esc(name)}`
+  + `${unit ? ` <b>${esc(unit)}</b>` : ''}</span></div>`
 
 function drawBars(labels: string[], values: number[], unit: string) {
-  const max = Math.max(...values, 1)
-  const W = 100 / values.length
-  return `<div class="dchart">${axisTop(max, unit)}
-    <div class="dbars">${values.map((v, i) =>
-      `<div class="dbar" style="width:${W}%">
-        <span class="dv">${nfmt(v)}</span>
-        <i style="height:${Math.max(2, (v / max) * 100)}%;background:${HUES[0]}"></i>
-        <span class="dl">${esc(labels[i])}</span>
-      </div>`).join('')}</div></div>`
+  const max = niceMax(Math.max(...values, 1))
+  const a = axis(max, unit)
+  return `<div class="dchart">${a.unit}
+    <div class="dplotrow">${a.col}
+      <div class="dplot">${a.grid}
+        <div class="dbars">${values.map((v, i) =>
+          `<div class="dbar">
+            <span class="dv">${nfmt(v)}</span>
+            <i style="height:${Math.max(2, (v / max) * 100)}%;background:${HUES[0]}"></i>
+          </div>`).join('')}</div>
+      </div>
+    </div>
+    <div class="dls">${labels.map((l) => `<span>${esc(l)}</span>`).join('')}</div>
+    ${legend('Значение', unit)}</div>`
 }
 
 function drawLine(labels: string[], values: number[], unit: string) {
-  const max = Math.max(...values, 1), min = Math.min(...values, 0)
-  const W = 600, H = 180, PB = 4
+  const max = niceMax(Math.max(...values, 1))
+  const W = 600, H = 180
   const x = (i: number) => (values.length < 2 ? 0 : (i / (values.length - 1)) * W)
-  const y = (v: number) => H - PB - ((v - min) / (max - min || 1)) * (H - PB * 2)
+  const y = (v: number) => H - (v / max) * H
   const pts = values.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`)
-  return `<div class="dchart">${axisTop(max, unit)}
-    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="dline" aria-hidden="true">
-      <defs><linearGradient id="dg" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stop-color="var(--accent)" stop-opacity=".28"/>
-        <stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>
-      <path d="M${pts.join(' L')} L${W},${H} L0,${H} Z" fill="url(#dg)"/>
-      <polyline points="${pts.join(' ')}" fill="none" stroke="var(--accent)" stroke-width="2"
-        vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
-    </svg>
-    <div class="dls">${labels.map((l) => `<span>${esc(l)}</span>`).join('')}</div></div>`
+  const a = axis(max, unit)
+  return `<div class="dchart">${a.unit}
+    <div class="dplotrow">${a.col}
+      <div class="dplot">${a.grid}
+        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="dline" aria-hidden="true">
+          <defs><linearGradient id="dg" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="var(--accent)" stop-opacity=".28"/>
+            <stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>
+          <path d="M${pts.join(' L')} L${W},${H} L0,${H} Z" fill="url(#dg)"/>
+          <polyline points="${pts.join(' ')}" fill="none" stroke="var(--accent)" stroke-width="2"
+            vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+        </svg>
+        <div class="ddots">${values.map((v, i) =>
+          `<i style="left:${(x(i) / W) * 100}%;bottom:${(v / max) * 100}%" title="${esc(labels[i])}: ${nfmt(v)}"></i>`).join('')}</div>
+      </div>
+    </div>
+    <div class="dls">${labels.map((l) => `<span>${esc(l)}</span>`).join('')}</div>
+    ${legend('Значение', unit)}</div>`
 }
 
 function drawDonut(labels: string[], values: number[], unit: string) {

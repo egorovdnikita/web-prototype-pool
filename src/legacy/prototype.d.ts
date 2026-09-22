@@ -76,6 +76,14 @@ export declare function status(t: 'ok'|'err'|'warn'|'off', label: string): strin
 export declare const CHECK: string
 export declare function pager(id: string, total: number, per?: number): string
 export declare function chart(m: Model, opts?: any): string
+/** Бейдж динамики: «+10%» цветом kind. */
+export declare function dyn(kind: 'teal'|'ok'|'neg', val: string): string
+/** Чипы периода 7/30/90 дней; состояние живёт в U.seg[id]. */
+export declare function dayChips(id: string, def?: number | null): string
+/** Селект в шапке карточки. */
+export declare function fsel(id: string, opts: string[], ico?: (v: string) => string): string
+/** Поле выбора даты с календарём. */
+export declare function dateInput(id?: string): string
 /** Скелетон загрузки страницы. */
 export declare function skeleton(): string
 export declare function loadFail(): string

@@ -2238,23 +2238,32 @@ html{scrollbar-gutter:stable}
 .scown span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .scown button{flex:0 0 auto;color:var(--accent);font-weight:600;text-decoration:underline}
 /* Диаграммы черновика. В дизайн-системе один график — линия хэшрейта,
-   поэтому столбики, кольцо и произвольную линию рисуем сами, но цветами
-   и шагами дизайн-системы. */
-.dchart{display:flex;flex-direction:column;gap:var(--sp2)}
-.dch{display:flex;align-items:baseline;justify-content:space-between;
-  font-size:var(--fs-c);line-height:var(--lh-c);color:var(--c2)}
-.dch b{color:var(--c1);font-weight:600}
-.dbars{display:flex;align-items:flex-end;gap:var(--sp2);height:200px}
-.dbar{display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;min-width:0}
-.dbar i{display:block;width:100%;max-width:64px;border-radius:var(--r-xs) var(--r-xs) 0 0;margin-top:auto}
-.dbar .dv{font-size:var(--fs-c);line-height:var(--lh-c);color:var(--c1);font-weight:600}
-.dbar .dl,.dls span{font-size:var(--fs-c2);line-height:var(--lh-c2);color:var(--c2);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
-.dline{display:block;width:100%;height:180px}
-.dls{display:flex;justify-content:space-between;gap:4px}
-.dchart.donut{flex-direction:row;align-items:center;gap:var(--sp5);flex-wrap:wrap}
-.ddonut{width:160px;height:160px;flex:0 0 auto}
+   поэтому столбики, кольцо и произвольную линию рисуем сами, но цветами,
+   шагами и радиусами дизайн-системы: ось слева, сетка, подписи снизу
+   и легенда — как у настоящих графиков прототипа. */
+.dchart{display:flex;flex-direction:column;gap:var(--sp2);position:relative}
+.dunit{font-size:var(--fs-c2);line-height:var(--lh-c2);color:var(--c3)}
+.dplotrow{display:flex;gap:var(--sp2);align-items:stretch}
+.dax{display:flex;flex-direction:column;justify-content:space-between;flex:0 0 auto;
+  font-size:var(--fs-c2);line-height:var(--lh-c2);color:var(--c3);text-align:right;min-width:36px}
+.dplot{position:relative;flex:1;min-width:0;height:200px}
+.dgridlines{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:space-between}
+.dgridlines i{display:block;height:1px;background:var(--border)}
+.dbars{position:absolute;inset:0;display:flex;align-items:flex-end;gap:var(--sp2)}
+.dbar{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%}
+.dbar i{display:block;width:100%;max-width:56px;border-radius:var(--r-xs) var(--r-xs) 0 0}
+.dbar .dv{font-size:var(--fs-c2);line-height:var(--lh-c2);color:var(--c2);margin-bottom:4px}
+.dline{position:absolute;inset:0;width:100%;height:100%}
+.ddots{position:absolute;inset:0;pointer-events:none}
+.ddots i{position:absolute;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:var(--r-f);
+  background:var(--surface);border:2px solid var(--accent)}
+.dls{display:flex;justify-content:space-between;gap:4px;padding-left:44px}
+.dls span,.dbar .dl{font-size:var(--fs-c2);line-height:var(--lh-c2);color:var(--c3);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dchart.donut{flex-direction:row;align-items:center;gap:var(--sp6);flex-wrap:wrap;padding:var(--sp2) 0}
+.ddonut{width:200px;height:200px;flex:0 0 auto}
 .dleg{display:flex;flex-direction:column;gap:var(--sp2);min-width:0}
+.dleg.row{flex-direction:row;flex-wrap:wrap;gap:var(--sp4);padding-left:44px}
 .dleg span{display:flex;align-items:center;gap:8px;font-size:var(--fs-s);line-height:var(--lh-s);color:var(--c2)}
 .dleg i{width:10px;height:10px;border-radius:var(--r-f);flex:0 0 auto}
 .dleg b{color:var(--c1);font-weight:600}
@@ -2265,8 +2274,12 @@ html{scrollbar-gutter:stable}
 .draftni .lbl i{font-style:normal;font-size:var(--fs-c2);line-height:var(--lh-c2);font-weight:700;
   text-transform:uppercase;letter-spacing:.04em;color:var(--warn);
   background:var(--warn-sub);border-radius:var(--r-f);padding:2px 6px}
-.draftnote .ch{align-items:center;gap:8px}
-.draftnote p{color:var(--c2);margin-top:4px}
+.draftbar{display:flex;align-items:center;gap:var(--sp3);padding:10px var(--sp4);
+  background:var(--warn-sub);border-radius:var(--r-m);
+  font-size:var(--fs-c);line-height:var(--lh-c);color:var(--c2)}
+.draftbar span{flex:1;min-width:0}
+.draftbar .btn.link{flex:0 0 auto;height:auto;padding:0}
+@media (max-width:760px){.draftbar{flex-wrap:wrap}}
 /* Пока ждём ответа прокси — реплика с многоточием вместо ответа */
 .scmsg.wait{opacity:.6;font-style:italic}
 /* Тонкая настройка: что набрано фразами, с крестиком на каждый токен */

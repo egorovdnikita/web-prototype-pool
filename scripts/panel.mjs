@@ -356,15 +356,20 @@ run('открыта модалка', { ...DEF }, ui(), { modal: 'export' }, (htm
   proto.applyState({ S: { ...DEF }, U: ui(), route: 'draft', pop: null, modal: null, openGroups: {}, mini: false });
   const m = proto.M();
   const html = D.renderDraft(D.vetDraft({ title: '<img src=x onerror=alert(1)>', blocks: [
-    { t: 'stats', items: [{ label: '<b>жир</b>', value: '1' }] },
-    { t: 'table', cols: ['<script>'], rows: [['"кавычки"']] },
+    { t: 'stats', items: [{ label: '<b>жир</b>', value: '1', note: '+12%' }] },
+    { t: 'table', cols: ['<script>', 'Статус'], rows: [['"кавычки"', 'Завершён']] },
     { t: 'empty', title: 'Пусто', text: 'Ничего' },
     { t: 'actions', items: ['Кнопка'] },
     { t: 'chart', title: 'График' }] }), m);
   if (html.includes('<img src=x') || html.includes('<script>') || html.includes('<b>жир</b>'))
     fail('содержимое черновика попало в разметку как есть');
   if (!html.includes('&lt;script&gt;')) fail('текст не экранирован');
-  if (!html.includes('Черновик')) fail('нет плашки «черновик»');
+  if (!html.includes('Черновик') || !html.includes('draftbar')) fail('нет плашки «черновик»');
+  /* Карточки собраны как на настоящих экранах: шапка с заголовком,
+     таблица с пагинацией, показатели с иконкой */
+  if (!html.includes('class="ch"')) fail('у карточек нет шапки');
+  if (!html.includes('class="pager"')) fail('у таблицы нет пагинации');
+  if (!html.includes('class="ic"')) fail('у показателей нет иконки');
   if (!html.includes('class="tbl"') || !html.includes('statcard')) fail('блоки собраны не из дизайн-системы');
   if (!html.includes('<svg')) fail('график не нарисовался');
   /* Свои диаграммы: столбики, линия и кольцо рисуются по числам */
@@ -376,6 +381,10 @@ run('открыта модалка', { ...DEF }, ui(), { modal: 'export' }, (htm
     fail('не все виды диаграмм нарисовались');
   if (drawn.includes('<b>01</b>')) fail('подпись диаграммы не экранирована');
   if (!drawn.includes('70%') || !drawn.includes('30%')) fail('в кольце нет долей');
+  /* Статусы в таблице — плашки дизайн-системы, а не голый текст */
+  if (!html.includes('class="status ok')) fail('статус в таблице не стал плашкой');
+  /* Дельта показателя — бейдж, а не строчка текста */
+  if (!html.includes('class="dyn ok"')) fail('дельта показателя не стала бейджем');
   /* Мусор вместо чисел не должен доходить до разметки */
   const junk = D.vetDraft({ title: 'Д', blocks: [{ t: 'chart', kind: 'evil',
     labels: ['a', 'b'], values: ['10', NaN, Infinity, 5] }] });

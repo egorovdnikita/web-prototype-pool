@@ -3675,7 +3675,7 @@ export {
   coinNow,
   AXES, AX_OWN, AX_STYLE, AXCAT, PRESETS, DEF, ICON_PACKS, iconSample, FONTS, fontStack, fontsHref, COINS, HEALTH, TIERS, NOTIF_N, notifCount, ACCOUNTS, M,
   loadFail, nf, ni, rng, sv, I, D, DOCS, LINKS, CONSENTS, LOGO, COIN_ICON, GOOGLE, USD_ICON, PAY_ICON,
-  NAV, TITLES, GROUP_OF, MODELS, TAGS, vendorOf, groups, tagsOf, allowed, permsOf, card, emptyBox, seg, segv, segLine, segi, pageSlice, cb, rd, status, CHECK, pager, chart, datePicker, profTabs, skeleton,
+  NAV, TITLES, GROUP_OF, MODELS, TAGS, vendorOf, groups, tagsOf, allowed, permsOf, card, emptyBox, seg, segv, segLine, segi, pageSlice, cb, rd, status, CHECK, pager, chart, datePicker, profTabs, skeleton, dyn, dayChips, fsel, dateInput,
   SUM_NAV, SUM_ROUTES, SCREEN_NAMES, V, MODALS, notifications, acctSummary, workersList, workersRows, PROF, SUBS, OBSERVERS, SESSIONS, VFIELDS, VFORMS, BANKS, obsOf, subsOf, coinsOf,
   S, U, route, pop, modal, openGroups, mini,
 };

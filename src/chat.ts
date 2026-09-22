@@ -238,9 +238,25 @@ function chartOf(kind: ChartKind, topic: string, n: number): Block {
   const { labels, values, unit } = genSeries(kind, topic, seedOf(topic + kind + n))
   return { t: 'chart', kind, title: titles[n % titles.length], labels, values, unit }
 }
-/** Таблица с содержимым: строки считаются от названия колонок и темы */
-function table(cols: string[], topic: string, n = 0): Block {
-  return { t: 'table', cols, rows: genRows(cols, 5, seedOf(topic + cols.join() + n)) }
+/** Таблица с содержимым: строки считаются от названия колонок и темы,
+    заголовок — по смыслу колонок, иначе карточка называется «Данные». */
+function table(cols: string[], topic: string, n = 0, title = ''): Block {
+  return {
+    t: 'table', title: title || tableTitle(cols), cols,
+    rows: genRows(cols, 5, seedOf(topic + cols.join() + n)),
+  }
+}
+const TBL_TITLE: [RegExp, string][] = [
+  [/сумма|выплач|кошел/, 'История выплат'],
+  [/бонус/, 'Начисления'],
+  [/реферал|партн/, 'Рефералы'],
+  [/отч[её]т/, 'Отчёты'],
+  [/показател|метрик/, 'Показатели по дням'],
+  [/воркер|хэшрейт/, 'Воркеры'],
+]
+const tableTitle = (cols: string[]) => {
+  const s = cols.join(' ').toLowerCase()
+  return (TBL_TITLE.find(([re]) => re.test(s)) || [null, 'Последние события'])[1]
 }
 
 /* Одна опечатка не должна ронять разбор. Расстояние больше единицы —
@@ -380,7 +396,12 @@ function editDraft(cur: Draft, plan: ReturnType<typeof planEdits>): ChatAnswer {
       if (blocks.length >= CAPS.blocks) { full = true; break }
       const idx = blocks.filter((b) => b.t === kind.t).length
       const one = kind.t === 'chart' && want ? chartOf(want, cur.title, idx) : kind.make(idx, cur.title)
-      blocks.push(one)
+      /* Вкладки фильтруют то, что под ними, поэтому их место — сразу
+         после показателей, а не в конце страницы, как у всех остальных */
+      if (one.t === 'tabs') {
+        const after = blocks.reduce((n, b, j) => (b.t === 'stats' ? j + 1 : n), 0)
+        blocks.splice(after, 0, one)
+      } else blocks.push(one)
       names.push(blockWord(one))
     }
     if (names.length) said.push(`добавил ${names.map((x) => `«${x}»`).join(', ')}`)

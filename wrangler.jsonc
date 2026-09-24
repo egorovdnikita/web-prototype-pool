@@ -1,11 +1,12 @@
 {
+  // Конфигурация раздачи прототипа на Cloudflare Pages.
+  // Файл появился сам при первой попытке деплоя (Wrangler пытался
+  // отправить проект на новую платформу Pages, которая теперь часть
+  // Workers) и был написан под неё — с «assets» и compatibility_date.
+  // Здесь он приведён к тому, что нужно классическому Pages: имя проекта
+  // и папка сборки. Больше ничего не требуется — фолбэк на index.html
+  // лежит в public/_redirects и попадает в dist сам.
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "promminer-pool",
-  "compatibility_date": "2026-09-21",
-  "observability": {
-    "enabled": true
-  },
-  "assets": {
-    "directory": "dist"
-  }
+  "pages_build_output_dir": "dist"
 }

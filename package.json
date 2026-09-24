@@ -10,7 +10,7 @@
     "panel": "node scripts/panel.mjs",
     "gate": "node scripts/gate-password.mjs",
     "catalog": "node scripts/catalog.mjs",
-    "deploy": "npm run build && npx wrangler pages deploy dist --project-name promminer-pool --branch main --commit-dirty=true"
+    "deploy": "npm run build && npx wrangler pages deploy --branch main --commit-dirty=true"
   },
   "type": "module",
   "private": true,

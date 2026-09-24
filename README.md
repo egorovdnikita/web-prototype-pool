@@ -155,6 +155,8 @@ npx wrangler pages project create promminer-pool --production-branch main --forc
 
 Фолбэк на `index.html` лежит в `public/_redirects` и попадает в сборку
 сам. База — корень домена, поэтому `BASE_PATH` задавать не нужно.
+Имя проекта и папка сборки — в `wrangler.jsonc`, отдельных флагов
+команде не нужно.
 
 ### Кто внутрь: Cloudflare Access
 

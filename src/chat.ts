@@ -128,10 +128,11 @@ const COLORS: Record<string, string> = {
   бежевый: 'e8dcc8', песочный: 'f0e6d2', кремовый: 'f7f3e8', мятный: 'a7f3d0',
 }
 /* «Белый», «белые», «белым» — одно и то же: срезаем окончание
-   прилагательного и сравниваем по первым четырём буквам основы. */
+   прилагательного. Сравниваем основу целиком, а не первые буквы:
+   по четырём буквам «графиках» попадало в «графитовый», и запрос
+   «страница в графиках» красил фон в графит. */
 const cstem = (w: string) => w
   .replace(/(ыми|ими|ого|его|ому|ему|ый|ий|ой|ые|ие|ая|яя|ое|ее|ым|им|ую|юю|ых|их|ом|ем)$/, '')
-  .slice(0, 4)
 const COLOR_STEM: Record<string, string> = {}
 for (const [name, hex] of Object.entries(COLORS)) COLOR_STEM[cstem(name)] = hex
 
@@ -195,7 +196,39 @@ function colorOf(w: string): string | null {
 const MAKE = /^(новый|новая|новое|создай|сделай|добавь|сгенерир|набросай|придумай)/
 /* «Вкладки» здесь нет намеренно: это блок внутри черновика, а не раздел —
    иначе «добавь вкладки» собирало бы новый раздел с названием «и». */
-const WHAT = /^(раздел|экран|страниц)/
+const WHAT_W = ['раздел', 'экран', 'страниц', 'дашборд']
+/* С опечаткой тоже: «старницу» — это всё-таки страница */
+const WHAT = (w: string) => WHAT_W.some((s) => w.startsWith(s) || near(w.slice(0, s.length), s))
+
+/* Название режем по первому обороту: «страницу аналитики, где всё будет
+   в графиках» — это раздел «Аналитика», а не раздел с длинным именем. */
+const TITLE_CUT = /\s+(?:где|чтобы|котор[а-яё]+|и только|только|причем|причём|с\s)/
+/* Косвенный падеж в названии выглядит опиской: «раздел аналитики» —
+   это «Аналитика». Для знакомых тем приводим к именительному. */
+const CANON: [RegExp, string][] = [
+  [/^аналит/, 'Аналитика'], [/^выплат/, 'Выплаты'], [/^бонус/, 'Бонусы'],
+  [/^реферал/, 'Рефералы'], [/^отч[её]т/, 'Отчёты'], [/^воркер/, 'Воркеры'],
+  [/^статист/, 'Статистика'], [/^монитор/, 'Мониторинг'], [/^сводк/, 'Сводка'],
+]
+function titleOf(raw: string) {
+  /* \w в JS не знает кириллицы: «страниц\w*» не доедало окончание,
+     и название приходило пустым. Буквы перечисляем явно. */
+  const m = raw.match(/(?:раздел|экран|страниц|дашборд)[а-яё]*\s+(?:про|для|о|об|по)?\s*[«"']?([^»"'.!?]+)/i)
+  /* С опечаткой в самом слове («старницу») регулярное выражение мимо —
+     тогда ищем слово на слух и берём всё, что после него */
+  const tail = m?.[1] ?? (() => {
+    const ws = raw.split(/\s+/)
+    const at = ws.findIndex((w) => WHAT(w.toLowerCase()))
+    return at < 0 ? '' : ws.slice(at + 1).join(' ')
+  })()
+  let name = tail.replace(/^(?:про|для|о|об|по)\s+/i, '').split(TITLE_CUT)[0]
+    .split(',')[0].trim().replace(/[«"']/g, '').replace(/\s+/g, ' ')
+  /* Длинное имя — это уже не имя: три слова хватает на «Доход по монетам» */
+  name = name.split(' ').slice(0, 3).join(' ')
+  const canon = CANON.find(([re]) => re.test(name.toLowerCase()))
+  if (canon) return canon[1]
+  return name ? name[0].toUpperCase() + name.slice(1) : ''
+}
 /* Блоки, которые можно назвать словом. Сравниваем по основе и допускаем
    одну опечатку: «диограмм» — это всё-таки диаграмма. */
 const KINDS: { stems: string[]; t: Block['t']; name: string; make: (n: number, topic: string) => Block }[] = [
@@ -319,6 +352,14 @@ const tableTitle = (cols: string[]) => {
    это уже другое слово, и угадывать мы не беремся. */
 function near(a: string, b: string) {
   if (a === b) return true
+  /* Перестановка соседних букв — самая частая опечатка: «старницу»
+     вместо «страницу». Считаем её за одну правку, а не за две. */
+  if (a.length === b.length) {
+    for (let i = 0; i < a.length - 1; i++) {
+      if (a[i] !== b[i] && a[i] === b[i + 1] && a[i + 1] === b[i]
+        && a.slice(0, i) === b.slice(0, i) && a.slice(i + 2) === b.slice(i + 2)) return true
+    }
+  }
   if (Math.abs(a.length - b.length) > 1) return false
   let i = 0, j = 0, diff = 0
   while (i < a.length && j < b.length) {
@@ -330,8 +371,10 @@ function near(a: string, b: string) {
   }
   return diff + (a.length - i) + (b.length - j) <= 1
 }
+/* Опечатки прощаем только длинным основам: у коротких («топ») любая
+   правка превращает их в другое слово — «только» становилось рейтингом. */
 const kindOf = (w: string) => KINDS.find((k) => k.stems.some((s) =>
-  w.startsWith(s) || near(w.slice(0, s.length), s)))
+  w.startsWith(s) || (s.length >= 5 && near(w.slice(0, s.length), s))))
 
 /* «Много диаграмм» — это не одна диаграмма */
 const COUNT: Record<string, number> = {
@@ -383,13 +426,13 @@ export function draftAnswer(q: string[], all: string[], raw: string, cur: Draft 
   /* Слова намерения ищем в исходном наборе, а не в очищенном: «сделай»
      и «покажи» лежат в STOP, иначе они перетягивали бы поиск по осям —
      но именно они отличают «сделай раздел» от «открой раздел». */
-  const wants = all.some((w) => MAKE.test(w)) && all.some((w) => WHAT.test(w))
+  const wants = all.some((w) => MAKE.test(w)) && all.some((w) => WHAT(w))
 
   /* Открыт черновик — правки разбираем первыми: «добавь таблицу» про него,
      а не заявка на новый раздел с названием «таблицу». */
   if (cur && !wants) {
     if (all.some((w) => RENAME.test(w))) {
-      const m = raw.match(/(?:переименуй|назови|название)\s*(?:раздел\w*|черновик\w*|его)?\s*(?:в|на)?\s*[«"']?([^»"'.!?]+)/i)
+      const m = raw.match(/(?:переименуй|назови|название)\s*(?:раздел[а-яё]*|черновик[а-яё]*|его)?\s*(?:в|на)?\s*[«"']?([^»"'.!?]+)/i)
       const name = (m?.[1] || '').trim().slice(0, CAPS.title)
       if (name.length < 2) return { say: 'Как назвать? Скажите: «переименуй в Аналитика».' }
       const title = name[0].toUpperCase() + name.slice(1)
@@ -409,16 +452,16 @@ export function draftAnswer(q: string[], all: string[], raw: string, cur: Draft 
   }
 
   if (wants) {
-    /* Название берём из исходной строки: регистр и кавычки важны, а words()
-       их уже потерял. Придумывать за пользователя не будем — берём то,
-       что сказали, вплоть до падежа. */
-    const m = raw.match(/(?:раздел|экран|страниц\w*)\w*\s*(?:про|для|о|об|по)?\s*[«"']?([^»"'.!?]+)/i)
-    const name = (m?.[1] || '').trim().replace(/\s+/g, ' ').slice(0, CAPS.title)
-    if (name.length < 2) {
+    /* Название берём из исходной строки: регистр и кавычки важны,
+       а words() их уже потерял */
+    const title = titleOf(raw).slice(0, CAPS.title)
+    if (title.length < 2) {
       return { say: 'Как назвать раздел? Скажите, например: «новый раздел Бонусы».', chips: ['новый раздел Бонусы'] }
     }
-    const title = name[0].toUpperCase() + name.slice(1)
-    const made = topicDraft(title)
+    /* «Только графики», «одни таблицы» — это про состав страницы */
+    const only = all.some((w) => /^(тольк|лишь|одни|исключительно)/.test(w))
+    const asked = [...new Set(all.map(kindOf).filter(Boolean))] as typeof KINDS
+    const made = only && asked.length ? onlyDraft(title, asked, all) : topicDraft(title)
     return {
       say: `Собрал черновик «${title}»: ${made.blocks.map(blockWord).join(', ')}. `
         + 'Цифры и строки я насочинял по названию — они правдоподобные, но выдуманные, '
@@ -560,6 +603,25 @@ const TOPICS: [RegExp, (d: PageData, t: string) => Block[]][] = [
     calloutOf('выплат'),
   ]],
 ]
+
+/** «Страница, где всё в графиках» — состав задают словами, а не темой.
+    Главное число оставляем: без него страница начинается с воздуха. */
+function onlyDraft(title: string, kinds: typeof KINDS, all: string[]): Draft {
+  const d = pageData(title)
+  const blocks: Block[] = []
+  const want = CHART_WORDS.find(([re]) => all.some((w) => re.test(w)))?.[1]
+  for (const k of kinds) {
+    if (k.t === 'chart') {
+      /* «Графики и только» — значит все три вида, а не три одинаковых */
+      const kk: ChartKind[] = want ? [want] : ['line', 'bars', 'donut']
+      kk.forEach((kind, i) => blocks.push(chartFrom(kind, d, CHART_TITLES[kind][i % CHART_TITLES[kind].length])))
+    } else if (k.t === 'table') blocks.push(tableFrom(['Дата', 'Показатель', 'Значение'], d, 'Показатели по дням'))
+    else if (k.t === 'list') blocks.push({ t: 'list', title: listTitle(title), items: d.split })
+    else if (k.t === 'feed') blocks.push({ t: 'feed', title: 'Последние события', items: d.feed })
+    else blocks.push(k.make(0, title))
+  }
+  return vetDraft({ title, blocks: [kpiOf(title, d), ...blocks] })!
+}
 
 /** Черновик по названию: знакомая тема — свой набор блоков, иначе каркас */
 export function topicDraft(title: string): Draft {

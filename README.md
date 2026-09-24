@@ -137,10 +137,21 @@ npx wrangler login
 npm run deploy
 ```
 
-Второй шаг собирает проект и заливает `dist/` в проект
-`promminer-pool` (на первом запуске Wrangler предложит его создать).
-Адрес будет вида `https://promminer-pool.pages.dev`, дальше можно
-привязать свой домен.
+Второй шаг собирает проект и заливает `dist/` в проект `promminer-pool`.
+Адрес: **https://promminer-pool.pages.dev** — дальше можно привязать
+свой домен.
+
+Проект уже создан, так что первый шаг из истории повторять не нужно.
+Если когда-нибудь придётся создавать заново — только с `--force`:
+
+```bash
+npx wrangler pages project create promminer-pool --production-branch main --force
+```
+
+Без флага Wrangler отправляет проект на новую платформу Pages (она теперь
+часть Workers), а та считает правило `/* /index.html 200` в `_redirects`
+бесконечным циклом и отказывает. Классический Pages его принимает —
+и у него же есть встроенная интеграция с Access.
 
 Фолбэк на `index.html` лежит в `public/_redirects` и попадает в сборку
 сам. База — корень домена, поэтому `BASE_PATH` задавать не нужно.
@@ -152,7 +163,7 @@ npm run deploy
 Настоящая дверь ставится в Cloudflare и стоит ноль до 50 человек:
 
 1. **Zero Trust → Access → Applications → Add an application → Self-hosted**;
-2. домен — тот, что выдал Pages (`promminer-pool.pages.dev`);
+2. домен — `promminer-pool.pages.dev`;
 3. политика **Allow** с правилом *Emails* и списком почт команды
    (или *Emails ending in* — весь домен компании);
 4. способ входа — **One-time PIN**: код приходит на почту, заводить

@@ -1,0 +1,4 @@
+# Cloudflare Pages: адреса разделов настоящие (/workers, /assets), поэтому
+# любой неизвестный путь отдаём index.html — дальше роутер разберётся сам.
+# На GitHub Pages ту же роль играла копия index.html под именем 404.html.
+/*    /index.html   200

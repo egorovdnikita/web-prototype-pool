@@ -9,7 +9,8 @@
     "sweep": "node scripts/sweep.mjs",
     "panel": "node scripts/panel.mjs",
     "gate": "node scripts/gate-password.mjs",
-    "catalog": "node scripts/catalog.mjs"
+    "catalog": "node scripts/catalog.mjs",
+    "deploy": "npm run build && npx wrangler pages deploy dist --project-name promminer-pool"
   },
   "type": "module",
   "private": true,

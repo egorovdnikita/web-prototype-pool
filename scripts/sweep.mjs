@@ -1,9 +1,12 @@
 import fs from 'node:fs';
-const P=await import('/Users/egorov_d_nikita/Projects/promminer-pool/src/legacy/prototype.js');
+/* Пути считаем от самого скрипта, а не от машины: с абсолютными
+   проверка ломалась от переименования папки проекта. */
+const ROOT=new URL('../', import.meta.url);
+const P=await import(new URL('src/legacy/prototype.js', ROOT).href);
 const {AXES,DEF,V,S,U,M,MODALS}=P;
 const freshUi=()=>({seg:{},sort:{},page:{},per:{},sel:new Set(),osel:new Set(),ochk:new Set(),
   phide:new Set(),nch:{},oval:false,arch:false,wfilter:'all',q:'',scdirty:false,scgrp:[],saved:[]});
-const PUB='/Users/egorov_d_nikita/Projects/promminer-pool/public';
+const PUB=new URL('public', ROOT).pathname;
 let n=0,bad=[];
 const run=(label,fn)=>{try{const h=fn()||'';n++;
   for(const m of h.matchAll(/src="([^"]+)"/g))

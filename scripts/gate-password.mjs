@@ -1,7 +1,6 @@
 /* Смена пароля на вход в прототип: спрашивает пароль, считает SHA-256
-   и кладёт его в .env.local — файл не в git, поэтому открытый репозиторий
-   не раздаёт даже хэш. Сам пароль никуда не сохраняется — ни в файл,
-   ни в историю команд.
+   и подставляет его в src/gate.ts. Сам пароль никуда не сохраняется —
+   ни в файл, ни в историю команд.
 
    Ввод скрыт: вместо символов печатаются точки. Запасные пути, если
    скрытый ввод не набирается:
@@ -14,7 +13,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 
-const FILE = new URL('../.env.local', import.meta.url);
+const FILE = new URL('../src/gate.ts', import.meta.url);
 const { stdin, stdout } = process;
 const SHOW = process.argv.includes('--show');
 
@@ -79,18 +78,19 @@ if (pass.length < 6) {
   process.exit(1);
 }
 
-const RE = /^VITE_GATE_HASH=.*$/m;
+const RE = /export const GATE_HASH = '[0-9a-f]*'/;
 const hash = createHash('sha256').update(pass).digest('hex');
-/* Файла может не быть вовсе — это нормально для свежего клона */
-let src = '';
-try { src = readFileSync(FILE, 'utf8') } catch { /* создадим */ }
-const line = `VITE_GATE_HASH=${hash}`;
-if (src.includes(line)) {
+const src = readFileSync(FILE, 'utf8');
+if (!RE.test(src)) {
+  console.error('Не нашёл строку GATE_HASH в src/gate.ts — правьте её руками.');
+  process.exit(1);
+}
+const next = src.replace(RE, `export const GATE_HASH = '${hash}'`);
+if (next === src) {
   console.log('Это тот же пароль, что уже стоит — файл не менялся.');
   process.exit(0);
 }
-const next = RE.test(src) ? src.replace(RE, line) : (src ? src.replace(/\n*$/, '\n') : '') + line + '\n';
 writeFileSync(FILE, next);
-console.log('Пароль обновлён в .env.local (в git он не попадёт).');
-console.log('Дальше: npm run deploy — сборка подхватит хэш и уедет на раздачу.');
+console.log('Пароль обновлён в src/gate.ts.');
+console.log('Дальше: git commit -am "Новый пароль" && git push — сборка уедет сама.');
 console.log('Все, кто уже входил, спросятся заново.');

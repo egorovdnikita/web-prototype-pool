@@ -39,7 +39,7 @@ npx wrangler deploy
 Потом собрать прототип с адресом прокси:
 
 ```bash
-VITE_AI_URL=https://prototype-chat.<аккаунт>.workers.dev VITE_AI_TOKEN=<та же строка> npm run build
+VITE_AI_URL=https://promminer-chat.<аккаунт>.workers.dev VITE_AI_TOKEN=<та же строка> npm run build
 ```
 
 Для GitHub Pages те же две переменные задаются в настройках репозитория
@@ -49,7 +49,7 @@ VITE_AI_URL=https://prototype-chat.<аккаунт>.workers.dev VITE_AI_TOKEN=<�
 Проверить локально, не пересобирая прототип:
 
 ```js
-localStorage.setItem('pm.ai', 'https://prototype-chat.<аккаунт>.workers.dev')
+localStorage.setItem('pm.ai', 'https://promminer-chat.<аккаунт>.workers.dev')
 ```
 
 ## Чего этот прокси не делает

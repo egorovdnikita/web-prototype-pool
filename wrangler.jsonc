@@ -7,6 +7,6 @@
   // и папка сборки. Больше ничего не требуется — фолбэк на index.html
   // лежит в public/_redirects и попадает в dist сам.
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "web-prototype",
+  "name": "promminer-pool",
   "pages_build_output_dir": "dist"
 }

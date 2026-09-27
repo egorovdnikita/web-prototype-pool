@@ -136,7 +136,8 @@ npm run deploy
 ```
 
 Второй шаг собирает проект и заливает `dist/` в проект `web-prototype`.
-Адрес: **https://web-prototype.pages.dev** — дальше можно привязать
+Адрес: **https://web-prototype-5d2.pages.dev** (суффикс добавил сам
+Cloudflare: короткое имя на pages.dev было занято) — дальше можно привязать
 свой домен.
 
 Проект уже создан, так что первый шаг из истории повторять не нужно.
@@ -163,7 +164,7 @@ npx wrangler pages project create web-prototype --production-branch main --force
 Настоящая дверь ставится в Cloudflare и стоит ноль до 50 человек:
 
 1. **Zero Trust → Access → Applications → Add an application → Self-hosted**;
-2. домен — `web-prototype.pages.dev`;
+2. домен — `web-prototype-5d2.pages.dev`;
 3. политика **Allow** с правилом *Emails* и списком почт команды
    (или *Emails ending in* — весь домен компании);
 4. способ входа — **One-time PIN**: код приходит на почту, заводить

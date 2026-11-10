@@ -7,8 +7,9 @@
 // Перед каждым кликом измеряет прямоугольник кнопки — кольцо в ролике ставится
 // в её центр. Результат: ПАПКА/NN-имя.png и ПАПКА/steps.json.
 //
-// Логотип в сайдбаре скрыт: в ролике README не должно быть названия продукта.
-// Скрипт падает, если название всё же встретилось в тексте страницы.
+// Логотип в сайдбаре остаётся как в проекте. Если задать PROMO_BRAND (регулярное
+// выражение, хранится вне репозитория), скрипт падает, когда это слово встретилось
+// в видимом тексте страницы.
 import { spawn } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -26,7 +27,7 @@ const { chromium } = require('playwright')
 
 const PORT = 5287
 const URL = `http://localhost:${PORT}/`
-const BRAND = /promm|prombox/i
+const BRAND = process.env.PROMO_BRAND ? new RegExp(process.env.PROMO_BRAND, 'i') : null
 
 // Сценарий: разделы через сайдбар, затем панель «Сценарии» поверх Главной.
 // Последний шаг возвращает прототип в исходное состояние — петля бесшовная.
@@ -65,7 +66,7 @@ try {
   await ctx.addInitScript(() => { localStorage.clear(); localStorage.setItem('pm.tour', '1') })
   const page = await ctx.newPage()
   await page.goto(URL, { waitUntil: 'networkidle' })
-  await page.addStyleTag({ content: '.sb .logo{visibility:hidden!important} *{caret-color:transparent!important}' })
+  await page.addStyleTag({ content: '*{caret-color:transparent!important}' })
   await page.evaluate(() => document.fonts.ready)
   const steps = []
   for (const [i, s] of STEPS.entries()) {
@@ -91,7 +92,7 @@ try {
       }
       return seen.join(' ') + ' ' + document.title.replace(/.*/, '')
     })
-    if (BRAND.test(text)) throw new Error(`Название продукта на шаге ${s.name}`)
+    if (BRAND && BRAND.test(text)) throw new Error(`Название продукта на шаге ${s.name}`)
     const file = `${String(i).padStart(2, '0')}-${s.name}.png`
     await page.screenshot({ path: path.join(out, file) })
     steps.push({ name: s.name, file, target })

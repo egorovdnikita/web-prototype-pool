@@ -19,10 +19,9 @@ export function Header({ m }: { m: Model }) {
      (макеты 30:71549 и 39:111046 файла «Наблюдатель») */
   const obs = S.role === 'observer'
   const showBal = !obs || !!permsOf().assets
-  /* На проде заголовок вкладки — «<Раздел> - Promminer» */
+  /* Имя проекта одинаково на всех маршрутах. */
   useEffect(() => {
-    const t = TITLES[route] || (route === DRAFT_ROUTE ? draft?.title : '')
-    document.title = t ? `${t} - Promminer` : 'Promminer Pool'
+    document.title = 'web-prototype-pool'
   }, [route, draft])
 
   return (

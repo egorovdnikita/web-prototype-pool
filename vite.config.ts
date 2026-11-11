@@ -6,7 +6,7 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   /* GitHub Pages раздаёт проект из подпапки, поэтому сборка для неё идёт
-     с BASE_PATH=/promminer-pool/. При раздаче с корня домена (Vercel и
+     с BASE_PATH=/web-prototype-pool/. При раздаче с корня домена (Vercel и
      прочие) переменной нет и база остаётся «/». */
   base: process.env.BASE_PATH || '/',
   plugins: [TanStackRouterVite(), react(), tailwindcss()],

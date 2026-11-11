@@ -1,4 +1,4 @@
-# Прокси для чата
+# Прокси для чата web-prototype-pool
 
 Чат в панели сценариев работает и без модели: `src/chat.ts` разбирает
 запрос локально. Этот прокси нужен, чтобы за чатом стояла настоящая
@@ -33,23 +33,28 @@ npx wrangler secret put PM_KEY          # любая строка, та же, ч
 npx wrangler deploy
 ```
 
+Перед `deploy` укажи в `wrangler.toml` значение `ALLOW_ORIGIN`: точный
+origin опубликованного web-prototype-pool (протокол и домен, без пути).
+Для нескольких источников перечисли их через запятую. Привязка `RL`
+должна содержать созданный KV namespace, иначе лимиты не работают.
+
 Через `npx`, а не `npm i -g`: глобальная установка на macOS упирается
 в права на `/usr/local/lib` и требует sudo, а wrangler нужен пару раз.
 
 Потом собрать прототип с адресом прокси:
 
 ```bash
-VITE_AI_URL=https://prototype-chat.<аккаунт>.workers.dev VITE_AI_TOKEN=<та же строка> npm run build
+VITE_AI_URL=https://<адрес-развёрнутого-worker> VITE_AI_TOKEN=<та же строка> npm run build
 ```
 
-Для GitHub Pages те же две переменные задаются в настройках репозитория
-(Settings → Secrets and variables → Actions) и пробрасываются в шаг
-сборки в `.github/workflows/pages.yml`.
+Для публикации через Cloudflare Pages задай `VITE_AI_URL` и
+`VITE_AI_TOKEN` в локальном `.env.local` (вне git), затем выполни
+`npm run deploy` из корня проекта.
 
 Проверить локально, не пересобирая прототип:
 
 ```js
-localStorage.setItem('pm.ai', 'https://prototype-chat.<аккаунт>.workers.dev')
+localStorage.setItem('pm.ai', 'https://<адрес-развёрнутого-worker>')
 ```
 
 ## Чего этот прокси не делает

@@ -305,7 +305,7 @@ export function rgbaHex(v: string) {
 /** Файл токенов в формате Design Tokens: его жуют плагины импорта в Figma */
 export function buildTokensDoc(values: Record<string, string>, meta: { dark: boolean; font: string }) {
   const doc: Record<string, unknown> = {
-    $description: `Promminer Pool — тема прототипа, ${meta.dark ? 'тёмная' : 'светлая'}`,
+    $description: `web-prototype-pool — тема прототипа, ${meta.dark ? 'тёмная' : 'светлая'}`,
   }
   for (const [group, list] of Object.entries(EXPORT)) {
     const g: Record<string, unknown> = {}

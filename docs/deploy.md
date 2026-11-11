@@ -4,7 +4,7 @@
 
 ## Cloudflare Pages
 
-Прототип раздаётся с Cloudflare Pages и закрыт Cloudflare Access. Сборка уезжает из терминала, а не с GitHub: Cloudflare Pages выбран, когда репозиторий был приватным, — GitHub Pages на бесплатном плане из приватного репозитория не собираются.
+web-prototype-pool раздаётся с Cloudflare Pages. Доступ команды настраивается через Cloudflare Access по инструкции ниже. Сборка уезжает из терминала, а не с GitHub: Cloudflare Pages выбран, когда репозиторий был приватным, — GitHub Pages на бесплатном плане из приватного репозитория не собираются.
 
 Войди в Cloudflare:
 

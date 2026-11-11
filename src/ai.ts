@@ -1,6 +1,6 @@
 /* Модель за чатом — через свой прокси.
 
-   Прототип раздаётся статикой с GitHub Pages: ключ от чужого API там
+   Прототип раздаётся статикой с Cloudflare Pages: ключ от чужого API там
    держать негде, он уедет вместе со страницей. Поэтому ключ живёт
    на маленьком прокси (исходник — в `worker/`), а прототип знает только
    его адрес. Адрес задаётся при сборке (`VITE_AI_URL`), и пока он пуст,
@@ -47,9 +47,9 @@ export function vetAnswer(raw: Raw, cur: Scenario, styleAsked: boolean) {
   /* Оси: только существующие ключи и только их значения */
   if (raw.axes && typeof raw.axes === 'object') {
     for (const [k, v] of Object.entries(raw.axes as Record<string, unknown>)) {
-      const ax = AXES[k as keyof Scenario]
+      const ax = Object.hasOwn(AXES, k) ? AXES[k as keyof Scenario] : undefined
       const val = str(v, 40)
-      if (!ax || !(k in DEF)) { dropped.push(`ось ${k}`); continue }
+      if (!ax || !Object.hasOwn(DEF, k)) { dropped.push(`ось ${k}`); continue }
       /* Оформление без просьбы не трогаем — это обещание пользователю,
          а не совет модели: она про него знает, но может забыть */
       if (!styleAsked && ax.g === 'Стиль') { dropped.push(`оформление (${k})`); continue }
@@ -96,9 +96,9 @@ export function vetAnswer(raw: Raw, cur: Scenario, styleAsked: boolean) {
   const out: ChatAnswer = { say, chips }
   if (draft) out.draft = draft
   if (Object.keys(apply).length) out.apply = apply
-  if (go && go in TITLES) out.go = go
+  if (go && Object.hasOwn(TITLES, go)) out.go = go
   else if (go) dropped.push(`экран ${go}`)
-  if (modal && modal in MODALS) out.modal = modal
+  if (modal && Object.hasOwn(MODALS, modal)) out.modal = modal
   else if (modal) dropped.push(`окно ${modal}`)
   return { answer: out, dropped }
 }

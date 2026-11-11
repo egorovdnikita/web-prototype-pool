@@ -127,7 +127,7 @@ body.mini .ni:not([data-grp]):hover>.lbl{display:flex;align-items:center;positio
 body.mini .ni .spacer.lbl{display:none!important}
 .logo{display:flex;align-items:flex-start;gap:8px;height:72px;padding:var(--sp5) var(--sp5) 0;flex:0 0 auto;color:var(--c1)}
 .logo .lm{margin-top:2px}
-.logo .lw{display:flex;flex-direction:column;align-items:flex-end}
+.logo .lw{display:flex;flex-direction:column;align-items:flex-end;font-size:var(--t-sm);font-weight:600;white-space:nowrap}
 /* Полоса прокрутки съедала 11px ширины пунктов: в макете пункт 228,
    а до контента от него ровно 12 (109:19431) */
 /* Список прокручивается, а пункты не ужимаются: без flex:0 0 auto высота 48

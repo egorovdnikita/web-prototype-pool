@@ -11,7 +11,7 @@ const LEGAL: [string, string][] = [
 export function Footer() {
   return (
     <div className="foot">
-      <span>© 2026 Promminer Pool. Все права защищены</span>
+      <span>© 2026 web-prototype-pool. Все права защищены</span>
       <span className="l">
         {LEGAL.map(([t, u]) => (
           <a href={u} target="_blank" rel="noopener" key={t}>{t}</a>

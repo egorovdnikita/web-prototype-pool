@@ -5,7 +5,7 @@ import { routeTree } from './routeTree.gen'
 import './styles/index.css'
 
 /* На GitHub Pages сайт живёт в подпапке — роутер должен знать её префикс,
-   иначе он видит «/promminer-pool/workers» и не находит маршрут. */
+   иначе он видит «/web-prototype-pool/workers» и не находит маршрут. */
 const router = createRouter({ routeTree, basepath: import.meta.env.BASE_URL })
 
 declare module '@tanstack/react-router' {

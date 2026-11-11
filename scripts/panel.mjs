@@ -251,6 +251,11 @@ run('открыта модалка', { ...DEF }, ui(), { modal: 'export' }, (htm
   if (vet({ go: 'payouts' }).answer.go !== 'payouts') fail('экран не открылся');
   if (vet({ go: 'нет-такого' }).answer.go) fail('несуществующий экран открылся');
   if (vet({ modal: 'нет-такого' }).answer.modal) fail('несуществующее окно открылось');
+  /* P1: унаследованное имя окна принималось и роняло UI: d.b is not a function. */
+  for (const key of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
+    const a = vet({ go: key, modal: key, axes: { [key]: 'x' } }).answer;
+    if (a.go || a.modal || a.apply) fail(`унаследованный ключ ${key} принят как команда модели`);
+  }
   if (vet({ tune: { bg: '#F5F5F5' } }).answer.apply?.tune !== 't1_bg-f5f5f5')
     fail('патч токенов не разобран');
   if (vet({ tune: { bg: 'zzz', rk: '25' } }).answer.apply?.tune !== 't1_rk-25')

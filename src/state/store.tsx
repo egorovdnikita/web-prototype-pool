@@ -13,7 +13,7 @@ import { ask, aiUrl } from '@/ai'
 import { decodeDraft, encodeDraft, vetDraft, type Draft } from '@/draft'
 
 const HOME = 'home'
-/* База сайта: «/» при раздаче с корня, «/promminer-pool/» на GitHub Pages.
+/* База сайта: «/» при раздаче с корня, «/web-prototype-pool/» на GitHub Pages.
    Роутеру её отдаёт basepath, а здесь она нужна, чтобы вычислить раздел
    из адреса и обратно. */
 const BASE = import.meta.env.BASE_URL || '/'

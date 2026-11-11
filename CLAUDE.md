@@ -1,8 +1,8 @@
-# Web-прототип
+# web-prototype-pool
 
 Прототип личного кабинета майнинг-пула. Vite + React + TypeScript, роутер — TanStack Router
 (файловый), стили — CSS дизайн-системы (`src/styles/app.css`) плюс Tailwind v4 для нового кода.
-Контекст, ссылки на макеты и дизайн-токены — в `docs/context.md`, план — в `docs/roadmap.md`.
+Контекст и дизайн-токены — в `docs/context.md`, план — в `docs/roadmap.md`.
 
 Запуск: `npm run dev` → http://localhost:5173. Проверка сборки: `npm run build`.
 Три проверки перед коммитом: `npm run sweep` — рендерит все экраны × модалки ×
@@ -99,8 +99,7 @@ src/
   (`import.meta.env.BASE_URL`), а не пишутся от корня: прототип может
   раздаваться из подпапки. Новую картинку вставлять как
   `src="${A}name.png"`. Публикация — `npm run deploy`: сборка уезжает
-  на Cloudflare Pages из терминала, потому что репозиторий приватный
-  и GitHub Pages из него на бесплатном плане не собираются. Фолбэк
+  на Cloudflare Pages из терминала, после переезда с GitHub Pages. Фолбэк
   на `index.html` — в `public/_redirects`. Подробности и настройка
   Cloudflare Access — в `docs/deploy.md`.
 - Вход в прототип закрыт паролем (`src/gate.ts`, экран `components/Gate.tsx`).

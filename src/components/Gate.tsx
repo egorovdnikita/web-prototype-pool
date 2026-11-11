@@ -59,7 +59,7 @@ export function Gate({ onPass }: { onPass: () => void }) {
 
         <button className="btn xl" onClick={submit} disabled={busy}>Войти</button>
       </div>
-      <div className="afoot">© 2026 Promminer Pool. Все права защищены</div>
+      <div className="afoot">© 2026 web-prototype-pool. Все права защищены</div>
     </div>
   )
 }
